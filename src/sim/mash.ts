@@ -69,10 +69,18 @@ function runLength(mu: number, cap: number, rng: PRNG): number {
   return len;
 }
 
+export interface MashDraw {
+  /** actual small-packet size this shuffle */
+  split: number;
+  /** actual pre-cut offset this shuffle */
+  offset: number;
+}
+
 /**
  * One mash shuffle, in place. `scratch` must be the same length as `deck`.
+ * Returns the sampled split/offset (used by fitting round-trips).
  */
-export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: MashConfig): void {
+export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: MashConfig): MashDraw {
   const n = deck.length;
   const { a: A, b: B } = buffers(n);
 
@@ -128,10 +136,12 @@ export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: Mash
     k++;
   }
   deck.set(scratch);
+  return { split: s, offset };
 }
 
 /** Partially-applied form matching the ShuffleFn signature. */
 export function makeMashShuffle(cfg: MashConfig) {
-  return (deck: Int16Array, scratch: Int16Array, rng: PRNG): void =>
+  return (deck: Int16Array, scratch: Int16Array, rng: PRNG): void => {
     mash(deck, scratch, rng, cfg);
+  };
 }
