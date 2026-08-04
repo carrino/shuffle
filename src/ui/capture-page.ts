@@ -74,8 +74,13 @@ app.innerHTML = `
 <div class="rowbtns">
   <button class="secondary" id="undo">← Undo</button>
   <button class="secondary" id="clear">Clear</button>
+  <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
+  <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
+<p class="muted" id="kbdHint">Keyboard: <code>r</code> / <code>b</code> tap a card,
+<code>Backspace</code>/<code>z</code> undo, <code>Shift+R</code> / <code>Shift+B</code>
+fill the remainder (the remnant block) with one color.</p>
 <div id="pasteArea" style="display:none">
   <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
@@ -154,17 +159,40 @@ function refresh(): void {
   }
 }
 
-el('tapR').addEventListener('click', () => {
-  seq.push('R');
+function tap(c: 'R' | 'B'): void {
+  seq.push(c);
   refresh();
-});
-el('tapB').addEventListener('click', () => {
-  seq.push('B');
-  refresh();
-});
-el('undo').addEventListener('click', () => {
+}
+function undo(): void {
   seq.pop();
   refresh();
+}
+/** Fill the rest of the deck with one color — the ordered remnant block. */
+function fillRest(c: 'R' | 'B'): void {
+  const n = Number(input('decksize').value);
+  if (!Number.isInteger(n) || n < 2) return;
+  while (seq.length < n) seq.push(c);
+  refresh();
+}
+el('tapR').addEventListener('click', () => tap('R'));
+el('tapB').addEventListener('click', () => tap('B'));
+el('undo').addEventListener('click', undo);
+el('fillR').addEventListener('click', () => fillRest('R'));
+el('fillB').addEventListener('click', () => fillRest('B'));
+
+// Keyboard entry (desktop): ignore keystrokes aimed at form fields.
+document.addEventListener('keydown', (e) => {
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const key = e.key;
+  if (key === 'r') tap('R');
+  else if (key === 'b') tap('B');
+  else if (key === 'R') fillRest('R');
+  else if (key === 'B') fillRest('B');
+  else if (key === 'Backspace' || key === 'z' || key === 'u') undo();
+  else return;
+  e.preventDefault();
 });
 el('clear').addEventListener('click', () => {
   if (seq.length === 0 || confirm('Clear the whole sequence?')) {
