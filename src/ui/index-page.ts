@@ -45,7 +45,8 @@ const num = (k: string, d: number) => {
 // deck size: 60 (standard) or 100 (commander); everything downstream —
 // uniform references, GSR baseline, theory milestones, log2 floor — is
 // parametric in n, with exact TV anchors baked in for both sizes
-let deckN: AnchoredDeckSize = num('n', 100) === 60 ? 60 : 100;
+const nParam = num('n', 100);
+let deckN: AnchoredDeckSize = nParam === 40 ? 40 : nParam === 60 ? 60 : 100;
 
 // A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
 // (the /data "simulate" links). While active it replaces the geometric(mu)
@@ -95,6 +96,7 @@ app.innerHTML = `
   (the faro lesson). Real hands wobble, and that wobble is what mixes.</p>
   <label style="margin-top:10px">Deck size
     <select id="deckSize">
+      <option value="40">40 (draft)</option>
       <option value="60">60 (standard)</option>
       <option value="100">100 (commander)</option>
     </select>
@@ -123,7 +125,8 @@ const deckSel = document.getElementById('deckSize') as HTMLSelectElement;
 deckSel.value = String(deckN);
 deckSel.addEventListener('change', () => {
   const oldN = deckN;
-  deckN = Number(deckSel.value) === 60 ? 60 : 100;
+  const v = Number(deckSel.value);
+  deckN = v === 40 ? 40 : v === 60 ? 60 : 100;
   document.getElementById('deckNLabel')!.textContent = String(deckN);
   // rescale the cut proportionally and re-clamp the slider range
   const split = document.getElementById('sl-splitMean') as HTMLInputElement;

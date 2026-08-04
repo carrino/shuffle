@@ -55,6 +55,7 @@ describe('Bayer-Diaconis exact TV anchors', () => {
     expect(M_FAIR_100).toBe(12);
     expect(M_STRICT_100).toBe(14);
     expect(theoryMilestones(60)).toEqual({ knee: 7, fair: 11, strict: 13 });
+    expect(theoryMilestones(40)).toEqual({ knee: 6, fair: 10, strict: 12 });
     expect(EXACT_TV_60.length).toBe(16);
     expect(exactTV(60, 7)).toBeCloseTo(0.40618, 5);
     // boundary semantics: first m with TV <= eps

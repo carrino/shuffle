@@ -19,6 +19,7 @@ app.innerHTML = `
     baseline at the same settings. Runs in a Web Worker.</p>
     <label>Deck size
       <select id="deckSize" style="width:12em">
+        <option value="40">40 (draft)</option>
         <option value="60">60 (standard)</option>
         <option value="100" selected>100 (commander)</option>
       </select>
@@ -57,7 +58,8 @@ runBtn.addEventListener('click', () => {
   resultsEl.innerHTML = '';
   detailEl.innerHTML = '';
   const T = Number((document.getElementById('traj') as HTMLInputElement).value) || DEFAULT_SWEEP.T;
-  const n = Number((document.getElementById('deckSize') as HTMLSelectElement).value) === 60 ? 60 : 100;
+  const nv = Number((document.getElementById('deckSize') as HTMLSelectElement).value);
+  const n = nv === 40 ? 40 : nv === 60 ? 60 : 100;
   const worker = new Worker(new URL('./sweep.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e) => {
     const msg = e.data;
