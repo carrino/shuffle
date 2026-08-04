@@ -43,6 +43,26 @@ via GSR drops:
 Fitting real two-color observations (Phase 4) recovers these parameters per
 collector.
 
+### Early findings from the model (before real data)
+
+At the T=500-trajectory statistical criterion on n=100 (GSR baseline ≈ 13):
+
+- **A habitual no-cut 30/70 mash never mixes.** The interleave zone only
+  reaches ~2× the split depth, so the bottom ~40 cards are frozen forever.
+  The cut-offset habit (or a bigger split) is what rescues it: 30/70 with a
+  10±6 cut mixes around ~18–19.
+- **With realistic split variance, cleaner interleaving mixes *faster*, not
+  slower.** A ±3-card split wobble breaks the perfect-interleave degeneracy,
+  while clumpy runs (mu ≈ 3) preserve ordered blocks — rising-sequence bias
+  is monotone *increasing* in mu at every split in the sweep grid. The
+  non-mixing faro pathology needs an exactly equal, zero-variance split.
+- **An equal-ish sleeved mash (50±3, mu ≈ 1.3) mixes in ~13 shuffles**,
+  on par with GSR — the remnant block, not interleave cleanliness, is the
+  main enemy for lopsided splits.
+
+These are model results; the /data page's fitted per-collector configs are
+the ground truth to re-run against.
+
 ## Randomness metrics (and their uniform references, n=100)
 
 | Metric | Uniform reference | Notes |
