@@ -84,9 +84,11 @@ app.innerHTML = `
   <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
-<p class="muted" id="kbdHint">Keyboard: <code>r</code> / <code>b</code> tap a card,
-<code>Backspace</code>/<code>z</code> undo, <code>Shift+R</code> / <code>Shift+B</code>
-fill the remainder (the remnant block) with one color.</p>
+<p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
+or <code>r</code>/<code>b</code> tap a card (left = R, right = B);
+<code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
+(or <code>Shift+R</code>/<code>Shift+B</code>) fill the remainder with one color;
+<code>Enter</code> saves a complete record and starts the next.</p>
 <div id="pasteArea" style="display:none">
   <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
@@ -100,17 +102,67 @@ fill the remainder (the remnant block) with one color.</p>
   <p id="validation" class="muted">Tap out the deck to build a record.</p>
   <textarea id="jsonline" rows="4" readonly></textarea>
   <div class="rowbtns">
-    <button id="copy" disabled>Copy JSON line</button>
+    <button id="saveNext" disabled>Save &amp; next ↵</button>
+    <button id="copy" class="secondary" disabled>Copy JSON line</button>
     <button id="download" class="secondary" disabled>Download .jsonl</button>
   </div>
-  <p class="muted">Append the line to <code>data/mashes.jsonl</code> and commit —
+  <p class="muted">Append the line(s) to <code>data/mashes.jsonl</code> and commit —
   writes stay git-serialized until the hosted endpoint exists.</p>
+</div>
+
+<div class="card" id="sessionCard">
+  <h2 style="margin-top:0">This session <span class="muted" id="savedCount">0 saved</span></h2>
+  <p class="muted">"Save &amp; next" locks the record in below (kept in this browser
+  across reloads), clears the taps, and keeps your collector/deck settings for
+  the next shuffle. Copy or download everything at the end.</p>
+  <textarea id="savedLines" rows="4" readonly
+    style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:0.8rem"></textarea>
+  <div class="rowbtns">
+    <button id="copyAll" disabled>Copy all lines</button>
+    <button id="downloadAll" class="secondary" disabled>Download session .jsonl</button>
+    <button id="clearSaved" class="secondary" disabled>Clear saved</button>
+  </div>
 </div>`;
 
 let seq: ('R' | 'B')[] = [];
 
 const el = (id: string) => document.getElementById(id)!;
 const input = (id: string) => el(id) as HTMLInputElement;
+
+// Session log: records locked in with "Save & next", persisted so an
+// accidental reload mid-session loses nothing.
+const SESSION_KEY = 'mash-capture-session';
+let saved: string[] = [];
+try {
+  const parsed: unknown = JSON.parse(localStorage.getItem(SESSION_KEY) ?? '[]');
+  if (Array.isArray(parsed)) saved = parsed.filter((s): s is string => typeof s === 'string');
+} catch {
+  saved = [];
+}
+
+function renderSaved(): void {
+  el('savedCount').textContent = `${saved.length} saved`;
+  (el('savedLines') as HTMLTextAreaElement).value = saved.join('\n');
+  const none = saved.length === 0;
+  (el('copyAll') as HTMLButtonElement).disabled = none;
+  (el('downloadAll') as HTMLButtonElement).disabled = none;
+  (el('clearSaved') as HTMLButtonElement).disabled = none;
+}
+
+function persistSaved(): void {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(saved));
+  renderSaved();
+}
+
+/** Lock the current valid record into the session list and clear the taps. */
+function saveAndNext(): void {
+  const line = (el('jsonline') as HTMLTextAreaElement).value;
+  if (!line || (el('saveNext') as HTMLButtonElement).disabled) return;
+  saved.push(line);
+  persistSaved();
+  seq = [];
+  refresh();
+}
 
 // scale the intended-split suggestion (~35% of the deck) when the deck size
 // changes, and keep the deck-name hint in sync
@@ -159,15 +211,17 @@ function refresh(): void {
     void store.write(result.record).then((w) => {
       if (w.mode === 'manual') {
         jsonline.value = w.line;
-        validation.innerHTML = '<span class="pill pass">VALID</span> ready to append';
+        validation.innerHTML = '<span class="pill pass">VALID</span> ready to save';
         (el('copy') as HTMLButtonElement).disabled = false;
         (el('download') as HTMLButtonElement).disabled = false;
+        (el('saveNext') as HTMLButtonElement).disabled = false;
       }
     });
   } else {
     jsonline.value = '';
     (el('copy') as HTMLButtonElement).disabled = true;
     (el('download') as HTMLButtonElement).disabled = true;
+    (el('saveNext') as HTMLButtonElement).disabled = true;
     validation.innerHTML =
       seq.length === 0
         ? 'Tap out the deck to build a record.'
@@ -202,11 +256,12 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key;
-  if (key === 'r') tap('R');
-  else if (key === 'b') tap('B');
-  else if (key === 'R') fillRest('R');
-  else if (key === 'B') fillRest('B');
-  else if (key === 'Backspace' || key === 'z' || key === 'u') undo();
+  if (key === 'r' || key === 'z' || key === 'ArrowLeft') tap('R');
+  else if (key === 'b' || key === 'x' || key === 'ArrowRight') tap('B');
+  else if (key === 'R' || key === 'Z') fillRest('R');
+  else if (key === 'B' || key === 'X') fillRest('B');
+  else if (key === 'Backspace' || key === 'u') undo();
+  else if (key === 'Enter') saveAndNext();
   else return;
   e.preventDefault();
 });
@@ -244,7 +299,29 @@ el('download').addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
+el('saveNext').addEventListener('click', saveAndNext);
+el('copyAll').addEventListener('click', () => {
+  void navigator.clipboard.writeText(saved.join('\n') + '\n').then(() => {
+    el('copyAll').textContent = 'Copied ✓';
+    setTimeout(() => (el('copyAll').textContent = 'Copy all lines'), 1200);
+  });
+});
+el('downloadAll').addEventListener('click', () => {
+  const blob = new Blob([saved.join('\n') + '\n'], { type: 'application/jsonl' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mash-session-${Date.now()}.jsonl`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+el('clearSaved').addEventListener('click', () => {
+  if (confirm(`Discard ${saved.length} saved record(s)?`)) {
+    saved = [];
+    persistSaved();
+  }
+});
 for (const id of ['collector', 'technique', 'deckname', 'intended', 'decksize']) {
   el(id).addEventListener('input', refresh);
 }
+renderSaved();
 refresh();

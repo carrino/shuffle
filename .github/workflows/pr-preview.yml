@@ -1,0 +1,37 @@
+# Short-lived per-PR hosting: each PR's build is deployed to
+# gh-pages/pr-preview/pr-<N>/ and a sticky comment on the PR links to it.
+# The preview is updated on every push and removed when the PR closes.
+# Requires Pages source "Deploy from a branch" → gh-pages /(root).
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+concurrency: preview-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: github.event.action != 'closed'
+        with:
+          node-version: 22
+          cache: npm
+      - if: github.event.action != 'closed'
+        run: npm ci
+      - name: Generate validation report
+        if: github.event.action != 'closed'
+        run: npm run validate:report
+      - name: Build site
+        if: github.event.action != 'closed'
+        run: npm run build
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./dist

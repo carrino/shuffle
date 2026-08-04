@@ -51,6 +51,12 @@ let deckN: AnchoredDeckSize = nParam === 40 ? 40 : nParam === 60 ? 60 : 100;
 // A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
 // (the /data "simulate" links). While active it replaces the geometric(mu)
 // model; touching the mu slider reverts to geometric.
+// max cut: past half is easy to grab on small decks (23 of 40, 35 of 60);
+// commander is physically capped around half
+function maxCut(n: number): number {
+  return n === 100 ? 50 : Math.round(n * 0.575);
+}
+
 let runDist: number[] | null = (() => {
   const rd = params.get('rd');
   if (!rd) return null;
@@ -59,12 +65,12 @@ let runDist: number[] | null = (() => {
 })();
 
 const SLIDERS: SliderSpec[] = [
-  { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: Math.floor(deckN / 2), step: 1, value: num('split', Math.round(deckN * 0.35)) },
-  { key: 'splitSd', label: 'Split variability ±', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
-  { key: 'mu', label: 'Run length mu (1 = perfect interleaving)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
+  { key: 'splitMean', label: 'Bottom-cut size (lifted packet)', min: 5, max: maxCut(deckN), step: 1, value: num('split', Math.round(deckN * 0.35)) },
+  { key: 'splitSd', label: 'Cut wobble (SD, fresh draw each shuffle)', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
+  { key: 'mu', label: 'Interleave clump size (1 = perfect, 2 = pairs…)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
   { key: 'overhangMean', label: 'Overhang (− = big packet leads)', min: -10, max: 15, step: 1, value: num('overhang', 3) },
-  { key: 'overhangSd', label: 'Overhang variability ±', min: 0, max: 8, step: 0.5, value: num('overhangSd', 2) },
-  { key: 'positionDependence', label: 'Clumpier ends (mu profile)', min: 0, max: 3, step: 0.1, value: num('posDep', 0) },
+  { key: 'overhangSd', label: 'Overhang wobble (SD, fresh draw each shuffle)', min: 0, max: 8, step: 0.5, value: num('overhangSd', 2) },
+  { key: 'positionDependence', label: 'End clumping (bigger clumps at top & bottom)', min: 0, max: 3, step: 0.1, value: num('posDep', 0) },
 ];
 
 app.innerHTML = `
@@ -80,9 +86,10 @@ app.innerHTML = `
 <div class="card">
   <p style="margin-top:0">A mash shuffle of an <span id="deckNLabel">${deckN}</span>-card sleeved deck: lift the
   BOTTOM packet, its first few cards (the overhang) become the new top, then
-  interleave in runs (mu = mean run length; 1 = perfect interleaving) down
-  into the rest — the big packet's remainder settles at the bottom, so cards
-  cycle and nothing freezes. GSR (blue) is the classic riffle model for
+  interleave down into the rest — clump size is how many cards fall together
+  from one side before the other side gets in (1 = perfect one-at-a-time
+  alternation) — and the big packet's remainder settles at the bottom, so
+  cards cycle and nothing freezes. GSR (blue) is the classic riffle model for
   comparison; gray band = uniform mean ± 2 SD. Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
@@ -90,10 +97,13 @@ app.innerHTML = `
   <a href="validate.html">/validate</a> for the full definition and the
   calibration against the exact GSR theory anchors M_KNEE/M_FAIR, drawn as
   vertical lines on every chart with the log₂ floor).</p>
-  <p><strong>Pass 1 (before real clump data):</strong> at mu=1 the only
-  randomness is the bottom-cut size and the overhang. Zero both variabilities
-  and the shuffle is a fixed permutation — it cycles forever and never mixes
-  (the faro lesson). Real hands wobble, and that wobble is what mixes.</p>
+  <p><strong>Pass 1 (before real clump data):</strong> with perfect
+  interleaving the only randomness is the bottom-cut size and the overhang.
+  The wobble numbers are <strong>standard deviations</strong> of a fresh
+  Gaussian draw every shuffle (not hard ± bounds — a 6±5 overhang sometimes
+  draws 14, sometimes −3). Zero both wobbles and the shuffle is a fixed
+  permutation — it cycles forever and never mixes (the faro lesson). Real
+  hands wobble, and that wobble is what mixes.</p>
   <label style="margin-top:10px">Deck size
     <select id="deckSize">
       <option value="40">40 (draft)</option>
@@ -102,12 +112,6 @@ app.innerHTML = `
     </select>
   </label>
   <div class="sliders" id="sliders"></div>
-  <label style="margin-top:10px">Remnant block lands on
-    <select id="remnant">
-      <option value="bottom">bottom</option>
-      <option value="top">top</option>
-    </select>
-  </label>
 </div>
 <div class="card readout" id="readout"></div>
 <div class="chart-grid" id="charts"></div>`;
@@ -119,8 +123,9 @@ for (const s of SLIDERS) {
     <input type="range" id="sl-${s.key}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.value}">`;
   slidersEl.appendChild(wrap);
 }
-const remnantSel = document.getElementById('remnant') as HTMLSelectElement;
-remnantSel.value = params.get('remnant') === 'top' ? 'top' : 'bottom';
+// remnant end has no UI control (mashing into the bottom of the deck is not
+// a real technique); fitted configs can still request 'top' via the URL
+const remnantEnd: 'top' | 'bottom' = params.get('remnant') === 'top' ? 'top' : 'bottom';
 const deckSel = document.getElementById('deckSize') as HTMLSelectElement;
 deckSel.value = String(deckN);
 deckSel.addEventListener('change', () => {
@@ -130,8 +135,8 @@ deckSel.addEventListener('change', () => {
   document.getElementById('deckNLabel')!.textContent = String(deckN);
   // rescale the cut proportionally and re-clamp the slider range
   const split = document.getElementById('sl-splitMean') as HTMLInputElement;
-  split.max = String(Math.floor(deckN / 2));
-  split.value = String(Math.max(5, Math.min(Math.floor(deckN / 2), Math.round((Number(split.value) * deckN) / oldN))));
+  split.max = String(maxCut(deckN));
+  split.value = String(Math.max(5, Math.min(maxCut(deckN), Math.round((Number(split.value) * deckN) / oldN))));
   schedule();
 });
 
@@ -143,7 +148,7 @@ function currentConfig(): MashConfig {
     mu: get('mu'),
     overhangMean: get('overhangMean'),
     overhangSd: get('overhangSd'),
-    remnantEnd: remnantSel.value as 'top' | 'bottom',
+    remnantEnd,
     positionDependence: get('positionDependence'),
     runDist: runDist ?? undefined,
   };
@@ -250,7 +255,6 @@ for (const s of SLIDERS) {
 document.getElementById('sl-mu')!.addEventListener('input', () => {
   runDist = null;
 });
-remnantSel.addEventListener('change', schedule);
 
 function fmtCert(s: CertStatus): string {
   return s.status === 'certified' ? String(s.k) : s.status === 'not-certified' ? 'never' : 'cannot certify';
