@@ -54,8 +54,14 @@ app.innerHTML = `
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>
     <div><label for="technique">Technique</label><input id="technique" value="mash"></div>
     <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-100"></div>
-    <div><label for="intended">Intended split</label><input id="intended" type="number" value="30" min="1" inputmode="numeric"></div>
-    <div><label for="decksize">Deck size n</label><input id="decksize" type="number" value="100" min="2" inputmode="numeric"></div>
+    <div><label for="intended">Intended split</label><input id="intended" type="number" value="35" min="1" inputmode="numeric"></div>
+    <div><label for="decksize">Deck size n</label>
+      <select id="decksize">
+        <option value="40">40 (draft)</option>
+        <option value="60">60 (standard)</option>
+        <option value="100" selected>100 (commander)</option>
+      </select>
+    </div>
   </div>
 </div>
 
@@ -105,6 +111,16 @@ let seq: ('R' | 'B')[] = [];
 
 const el = (id: string) => document.getElementById(id)!;
 const input = (id: string) => el(id) as HTMLInputElement;
+
+// scale the intended-split suggestion (~35% of the deck) when the deck size
+// changes, and keep the deck-name hint in sync
+(el('decksize') as HTMLSelectElement).addEventListener('change', () => {
+  const n = Number(input('decksize').value);
+  input('intended').value = String(Math.round(n * 0.35));
+  const deckName = input('deckname');
+  if (/^sleeved-\d+$/.test(deckName.value)) deckName.value = `sleeved-${n}`;
+  refresh();
+});
 
 function record() {
   return {
