@@ -1,11 +1,12 @@
 // Record type + validation for real two-color mash observations.
 //
-// Capture protocol (documented for collectors): prepare the deck as a block
-// of R-sleeved cards — your intended small packet — on top of B-sleeved
-// cards. Cut at the color boundary, mash once the way you always mash, then
+// Capture protocol (documented for collectors): prepare the deck with a
+// block of R-sleeved cards — your intended small packet — on the BOTTOM,
+// B-sleeved cards on top. Lift the bottom block at the color boundary and
+// mash once the way you always mash (its head becomes the new top), then
 // fan the deck and record the colors TOP to BOTTOM. Packets are identified
-// by color, so the actual split is the R count and every run boundary is a
-// packet alternation.
+// by color, so the actual split is the R count, the leading R run is the
+// overhang, and every run boundary is a packet alternation.
 
 export interface MashRecord {
   /** ISO8601 timestamp of the observation */

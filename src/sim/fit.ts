@@ -1,19 +1,21 @@
 // Fit mash parameters from real two-color observation strings.
 //
 // Identifiability notes (what a single post-mash color string can and cannot
-// tell you, given the capture protocol of R small packet over B big packet):
+// tell you, given the capture protocol: the R block is the BOTTOM
+// intended-split cards, B on top; the mash lifts the R block and mashes it
+// into the top, so the string normally STARTS with R):
 // - Run lengths ARE directly observable: packets are identified by color and
 //   model runs alternate packets, so color runs = model runs, except that
-//   the big packet's remnant merges with the zone's final B run. We
-//   therefore exclude the terminal run at the remnant end from mu fitting.
+//   the big packet's remnant merges with the zone's final B run and the
+//   leading run is the overhang block (not mu-driven). We therefore exclude
+//   the terminal run at the remnant end AND the leading small-color run
+//   from mu fitting.
 // - Actual split = R count (the whole small packet is red).
 // - Remnant end/size = the longest terminal B run.
-// - The offset habit is only visible as a leading ordered B block at the
-//   opposite end from the remnant (mashing the small packet deeper leaves
-//   the top cards untouched). Under zero offset that leading run has mean
-//   ~mu/2 (it starts mid-alternation half the time), so we report
-//   max(0, leadingRun − mu) as the offset estimate. It is a proxy, not an
-//   exact inverse — good enough to flag a habitual offset.
+// - The OVERHANG is directly observable: it is exactly the leading
+//   small-color run at the non-remnant end (the lifted packet's head cards
+//   that sit above the mesh). A string that starts with B instead is a
+//   seating anomaly and reads as overhang 0.
 // - Position dependence: mean run length by thirds of the interleave zone,
 //   least-squares fit of the (2t−1)² profile used by the operator.
 //
@@ -33,12 +35,12 @@ export interface StringAnalysis {
   /** 'top' | 'bottom' — end with the longest terminal B run */
   remnantEnd: 'top' | 'bottom';
   remnantSize: number;
-  /** interior run lengths (interleave zone only, remnant excluded) */
+  /** interior run lengths (zone only; remnant and overhang run excluded) */
   runs: number[];
   /** run lengths with their zone position t in 0..1 (for position dependence) */
   runPositions: { length: number; t: number }[];
-  /** leading ordered B block at the non-remnant end */
-  leadingBlock: number;
+  /** leading small-color run at the non-remnant end = the overhang (0 = B-led anomaly) */
+  overhang: number;
 }
 
 export function analyzeString(record: MashRecord): StringAnalysis {
@@ -53,24 +55,31 @@ export function analyzeString(record: MashRecord): StringAnalysis {
   while (botB < n && s[n - 1 - botB] === 'B') botB++;
   const remnantEnd: 'top' | 'bottom' = topB > botB ? 'top' : 'bottom';
   const remnantSize = Math.max(topB, botB);
-  const leadingBlock = Math.min(topB, botB);
 
   // interleave zone = everything except the remnant run
   const zoneStart = remnantEnd === 'top' ? remnantSize : 0;
   const zoneEnd = remnantEnd === 'bottom' ? n - remnantSize : n; // exclusive
-  const runs: number[] = [];
-  const runPositions: { length: number; t: number }[] = [];
+  const allRuns: { length: number; t: number; color: string }[] = [];
   let i = zoneStart;
   while (i < zoneEnd) {
-    const c = s[i];
+    const c = s[i]!;
     let j = i;
     while (j < zoneEnd && s[j] === c) j++;
     const length = j - i;
-    runs.push(length);
     const mid = (i + j) / 2;
-    runPositions.push({ length, t: zoneEnd === zoneStart ? 0.5 : (mid - zoneStart) / (zoneEnd - zoneStart) });
+    allRuns.push({
+      length,
+      t: zoneEnd === zoneStart ? 0.5 : (mid - zoneStart) / (zoneEnd - zoneStart),
+      color: c,
+    });
     i = j;
   }
+
+  // the overhang is the run at the NON-remnant end, if it is small-color
+  const leadIdx = remnantEnd === 'bottom' ? 0 : allRuns.length - 1;
+  const lead = allRuns[leadIdx];
+  const overhang = lead !== undefined && lead.color === 'R' ? lead.length : 0;
+  const interior = allRuns.filter((_, idx) => !(overhang > 0 && idx === leadIdx));
 
   return {
     n,
@@ -78,9 +87,9 @@ export function analyzeString(record: MashRecord): StringAnalysis {
     intendedSplit: record.intendedSplit,
     remnantEnd,
     remnantSize,
-    runs,
-    runPositions,
-    leadingBlock,
+    runs: interior.map((r) => r.length),
+    runPositions: interior.map((r) => ({ length: r.length, t: r.t })),
+    overhang,
   };
 }
 
@@ -107,7 +116,7 @@ export function fitRecords(collector: string, records: MashRecord[]): FitResult 
   const allRuns: number[] = [];
   const allRunPositions: { length: number; t: number }[] = [];
   const splits: number[] = [];
-  const offsets: number[] = [];
+  const overhangs: number[] = [];
   const remnants: number[] = [];
   let remnantTopVotes = 0;
   let splitBiasSum = 0;
@@ -116,7 +125,7 @@ export function fitRecords(collector: string, records: MashRecord[]): FitResult 
     allRuns.push(...a.runs);
     allRunPositions.push(...a.runPositions);
     splits.push(a.actualSplit);
-    offsets.push(a.leadingBlock);
+    overhangs.push(a.overhang);
     remnants.push(a.remnantSize);
     if (a.remnantEnd === 'top') remnantTopVotes++;
     splitBiasSum += a.actualSplit - a.intendedSplit;
@@ -141,9 +150,6 @@ export function fitRecords(collector: string, records: MashRecord[]): FitResult 
     mean(allRunPositions.filter((r) => r.t >= 2 / 3).map((r) => r.length)),
   ];
 
-  const rawOffset = mean(offsets);
-  const offsetMean = Math.max(0, rawOffset - mu);
-
   const histogram: number[] = [];
   for (const r of allRuns) {
     histogram[r - 1] = (histogram[r - 1] ?? 0) + 1;
@@ -157,8 +163,8 @@ export function fitRecords(collector: string, records: MashRecord[]): FitResult 
       splitMean: round2(splitMean),
       splitSd: round2(splitSd),
       mu: round2(mu),
-      offsetMean: round2(offsetMean),
-      offsetSd: round2(sd(offsets)),
+      overhangMean: round2(mean(overhangs)),
+      overhangSd: round2(sd(overhangs)),
       remnantEnd: remnantTopVotes * 2 > analyses.length ? 'top' : 'bottom',
       positionDependence: round2(positionDependence),
     },

@@ -167,8 +167,6 @@ describe('uniformReference', () => {
     expect(uniformReference(100, 'adjacentPairDisplacement').mean).toBeCloseTo(101 / 3, 12);
     expect(uniformReference(100, 'spearmanToStart').mean).toBe(0);
     expect(uniformReference(100, 'spearmanToStart').sd).toBeCloseTo(1 / Math.sqrt(99), 12);
-    expect(uniformReference(100, 'topCardHome').mean).toBeCloseTo(0.01, 12);
-    expect(uniformReference(100, 'topCardHome').sd).toBeCloseTo(Math.sqrt(0.01 * 0.99), 12);
     expect(uniformReference(100, 'sequentialGuesser').mean).toBeCloseTo(5.187377517639621, 9);
   });
 });

@@ -78,8 +78,15 @@ export interface ValidationReport {
   };
   /** ceil(log2((n+1)/2)) — no riffle-family shuffle can be random before this */
   log2Floor: { n52: number; n100: number };
-  /** measured vs theory topCardHome curves for the /validate overlay */
-  topCardTheory: { n52: number[]; n100: number[] };
+  /**
+   * GSR-only top-card diagnostic (NOT a certification metric — the mash
+   * mechanic cycles the bottom to the top, so the top card always changes):
+   * measured P(top card at home) vs the (1+λ/2)/n law, for the overlay.
+   */
+  topCard: {
+    n52: { measured: number[]; theory: number[] };
+    n100: { measured: number[]; theory: number[] };
+  };
   generatedAt?: string;
 }
 
@@ -148,8 +155,10 @@ export function runValidation(
 
   // ---- (d) GSR convergence vs anchors ------------------------------------
   report('Checking convergence against anchors…', 0.94);
-  checks.push(checkGsrConvergence(52, gsr52, opts.trajectories));
-  checks.push(checkGsrConvergence(100, gsr100, opts.trajectories));
+  const topCard52 = gsrTopCardCurve(52, gsr52.K, opts.trajectories, opts.seed + 7);
+  const topCard100 = gsrTopCardCurve(100, gsr100.K, opts.trajectories, opts.seed + 8);
+  checks.push(checkGsrConvergence(52, gsr52, opts.trajectories, topCard52));
+  checks.push(checkGsrConvergence(100, gsr100, opts.trajectories, topCard100));
 
   // ---- (e) rising-sequence floor ------------------------------------------
   checks.push(checkLog2Floor(gsr52, gsr100));
@@ -169,11 +178,34 @@ export function runValidation(
     anchors: { tv52: EXACT_TV_52, tv100: EXACT_TV_100 },
     milestones: { n52: theoryMilestones(52), n100: theoryMilestones(100) },
     log2Floor: { n52: log2Floor(52), n100: log2Floor(100) },
-    topCardTheory: {
-      n52: Array.from({ length: gsr52.K }, (_, i) => topCardHomeGSRTheory(52, i + 1)),
-      n100: Array.from({ length: gsr100.K }, (_, i) => topCardHomeGSRTheory(100, i + 1)),
+    topCard: {
+      n52: {
+        measured: Array.from(topCard52),
+        theory: Array.from({ length: gsr52.K }, (_, i) => topCardHomeGSRTheory(52, i + 1)),
+      },
+      n100: {
+        measured: Array.from(topCard100),
+        theory: Array.from({ length: gsr100.K }, (_, i) => topCardHomeGSRTheory(100, i + 1)),
+      },
     },
   };
+}
+
+/** GSR-only P(top card at home) curve — the late-stage diagnostic. */
+export function gsrTopCardCurve(n: number, K: number, T: number, seed: number): Float64Array {
+  const deck = makeDeck(n);
+  const scratch = new Int16Array(n);
+  const rng = makePRNG(seed);
+  const hits = new Float64Array(K);
+  for (let t = 0; t < T; t++) {
+    for (let i = 0; i < n; i++) deck[i] = i;
+    for (let k = 0; k < K; k++) {
+      gsr(deck, scratch, rng);
+      if (deck[0] === 0) hits[k] = hits[k]! + 1;
+    }
+  }
+  for (let k = 0; k < K; k++) hits[k] = hits[k]! / T;
+  return hits;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,7 +342,6 @@ const GENERIC_METRICS: readonly MetricName[] = [
   'adjacentPairDisplacement',
   'spearmanToStart',
   'maxLinearFunctionalZ',
-  'topCardHome',
   'sequentialGuesser',
 ];
 
@@ -318,7 +349,12 @@ function fmtCert(s: CertStatus): string {
   return s.status === 'certified' ? `certified at ${s.k}` : s.status;
 }
 
-function checkGsrConvergence(n: 52 | 100, result: CurveResult, T: number): CheckResult {
+function checkGsrConvergence(
+  n: 52 | 100,
+  result: CurveResult,
+  T: number,
+  topCardMeasured: Float64Array,
+): CheckResult {
   const details: string[] = [];
   let pass = true;
 
@@ -360,26 +396,27 @@ function checkGsrConvergence(n: 52 | 100, result: CurveResult, T: number): Check
       `${predicted} at T=${T} (tolerance ±2) ${mixOk ? 'OK' : 'FAIL'}`,
   );
 
-  // topCardHome tracks the GSR excess law P ≈ (1 + λ/2)/n with λ = n/2^m:
-  // pooled deviation from theory over the λ ≤ 1.5 regime within MC error.
+  // GSR-only diagnostic (not a certification metric): P(top card at home)
+  // tracks the excess law P ≈ (1 + λ/2)/n with λ = n/2^m — pooled deviation
+  // from theory over the λ ≤ 1.5 regime within MC error.
   {
-    const ref = uniformReference(n, 'topCardHome');
+    const sdTop = Math.sqrt((1 / n) * (1 - 1 / n));
     const ms: number[] = [];
     let dev = 0;
     for (let m = 1; m <= result.K; m++) {
       const lambda = n / 2 ** m;
       if (lambda <= 1.5) {
         ms.push(m);
-        dev += result.curves.topCardHome.mean[m - 1]! - topCardHomeGSRTheory(n, m);
+        dev += topCardMeasured[m - 1]! - topCardHomeGSRTheory(n, m);
       }
     }
-    const pooledSe = ref.sd / Math.sqrt(T) / Math.sqrt(ms.length);
+    const pooledSe = sdTop / Math.sqrt(T) / Math.sqrt(ms.length);
     const avgDev = dev / ms.length;
     const ok = Math.abs(avgDev) < 4 * pooledSe;
     pass &&= ok;
     details.push(
-      `topCardHome vs (1+λ/2)/n over m=${ms[0]}..${ms[ms.length - 1]}: pooled deviation ` +
-        `${avgDev.toExponential(2)} (tol ±${(4 * pooledSe).toExponential(2)}) ${ok ? 'OK' : 'FAIL'}`,
+      `topCardHome (GSR diagnostic) vs (1+λ/2)/n over m=${ms[0]}..${ms[ms.length - 1]}: pooled ` +
+        `deviation ${avgDev.toExponential(2)} (tol ±${(4 * pooledSe).toExponential(2)}) ${ok ? 'OK' : 'FAIL'}`,
     );
   }
 

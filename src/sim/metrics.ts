@@ -155,14 +155,15 @@ export function randomLinearFunctionals(
 
 /**
  * Indicator: is the original top card back on top? Trajectory means estimate
- * P(pos(0) = 0).
+ * P(pos(0) = 0). Uniform reference: mean 1/n, SD sqrt((1/n)(1 - 1/n)).
  *
- * Uniform reference: mean 1/n, SD sqrt((1/n)(1 - 1/n)) (exact, Bernoulli).
- * For GSR the known excess is ~ lambda/2 in relative terms with
- * lambda = n/2^m, i.e. P ≈ (1 + lambda/2)/n — see topCardHomeGSRTheory,
- * which /validate overlays on the measured curve. This statistic stays
- * biased well after risingSequences saturates (2^k ≥ (n+1)/2), making it
- * the late-stage-sensitive check of the battery.
+ * NOT part of the certification battery: the mash mechanic lifts the bottom
+ * packet to the top every shuffle, so the top card always changes
+ * mechanically — the statistic only measures sleight of hand there. It IS
+ * still a strong GSR-only diagnostic: for GSR the known excess is ~ lambda/2
+ * in relative terms with lambda = n/2^m, i.e. P ≈ (1 + lambda/2)/n — see
+ * topCardHomeGSRTheory and the /validate overlay, where this bias visibly
+ * outlives rising-sequence saturation.
  */
 export function topCardHome(deck: Int16Array): number {
   return deck[0] === 0 ? 1 : 0;
@@ -281,7 +282,6 @@ export type MetricName =
   | 'adjacentPairDisplacement'
   | 'spearmanToStart'
   | 'maxLinearFunctionalZ'
-  | 'topCardHome'
   | 'sequentialGuesser';
 
 export const METRIC_NAMES: readonly MetricName[] = [
@@ -289,7 +289,6 @@ export const METRIC_NAMES: readonly MetricName[] = [
   'adjacentPairDisplacement',
   'spearmanToStart',
   'maxLinearFunctionalZ',
-  'topCardHome',
   'sequentialGuesser',
 ];
 
@@ -317,8 +316,6 @@ export function uniformReference(n: number, metric: MetricName): UniformRef {
       return { mean: 0, sd: 1 / Math.sqrt(n - 1), exact: true };
     case 'maxLinearFunctionalZ':
       return { mean: MAX_ABS_Z_5_MEAN, sd: MAX_ABS_Z_5_SD, exact: false };
-    case 'topCardHome':
-      return { mean: 1 / n, sd: Math.sqrt((1 / n) * (1 - 1 / n)), exact: true };
     case 'sequentialGuesser': {
       // exact: independent Bernoulli(1/k) steps under uniform (see docstring)
       let mean = 0;
@@ -356,7 +353,6 @@ export function makeMetricComputer(n: number, lfSamples = 100_000): MetricComput
         adjacentPairDisplacement: adjacentPairDisplacement(deck, posBuf),
         spearmanToStart: spearmanToStart(deck, posBuf),
         maxLinearFunctionalZ: randomLinearFunctionals(deck, posBuf, ref),
-        topCardHome: topCardHome(deck),
         sequentialGuesser: sequentialGuesser(deck, guesserScratch),
       };
     },

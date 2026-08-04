@@ -21,8 +21,8 @@ function exploreUrl(cfg: MashConfig): string {
     split: String(cfg.splitMean),
     splitSd: String(cfg.splitSd),
     mu: String(cfg.mu),
-    offset: String(cfg.offsetMean),
-    offsetSd: String(cfg.offsetSd),
+    overhang: String(cfg.overhangMean),
+    overhangSd: String(cfg.overhangSd),
     remnant: cfg.remnantEnd,
     posDep: String(cfg.positionDependence ?? 0),
   });
@@ -80,10 +80,10 @@ store
     fitCard.innerHTML = `<h2 style="margin-top:0">Fitted mash configs</h2>
       <p class="muted">Grouped per collector — pooled only as the labeled last
       row, never by default. mu = mean interior run length (SE in parens);
-      offset is a proxy from leading ordered blocks.</p>
+      overhang = the leading small-color run (directly observed).</p>
       <div style="overflow-x:auto"><table class="data"><thead><tr>
         <th>collector</th><th>records</th><th>split</th><th>mu</th>
-        <th>mu by thirds</th><th>offset</th><th>remnant</th><th>pos.dep</th><th></th>
+        <th>mu by thirds</th><th>overhang</th><th>remnant</th><th>pos.dep</th><th></th>
       </tr></thead><tbody>${fits
         .map(
           (f, i) => `<tr>
@@ -92,7 +92,7 @@ store
           <td>${f.config.splitMean} ± ${f.config.splitSd}</td>
           <td>${f.config.mu} (±${round2(f.stats.muSe)})</td>
           <td>${f.stats.muByThird.join(' / ')}</td>
-          <td>${f.config.offsetMean} ± ${f.config.offsetSd}</td>
+          <td>${f.config.overhangMean} ± ${f.config.overhangSd}</td>
           <td>${f.config.remnantEnd} (~${f.stats.meanRemnant})</td>
           <td>${f.config.positionDependence}</td>
           <td><a href="${exploreUrl(f.config)}" data-fit="${i}">simulate →</a></td>

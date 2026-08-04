@@ -22,7 +22,6 @@ const METRIC_LABELS: Record<MetricName, string> = {
   adjacentPairDisplacement: 'Adjacent-pair displacement',
   spearmanToStart: 'Spearman ρ vs start',
   maxLinearFunctionalZ: 'Max |z| of 5 linear functionals',
-  topCardHome: 'P(top card at home)',
   sequentialGuesser: 'Sequential guesser',
 };
 
@@ -48,11 +47,11 @@ const num = (k: string, d: number) => {
 };
 
 const SLIDERS: SliderSpec[] = [
-  { key: 'splitMean', label: 'Small packet size', min: 5, max: 50, step: 1, value: num('split', 30) },
+  { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: 50, step: 1, value: num('split', 35) },
   { key: 'splitSd', label: 'Split variability ±', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
-  { key: 'mu', label: 'Run length mu (1 = perfect alternation)', min: 1, max: 4, step: 0.05, value: num('mu', 1.3) },
-  { key: 'offsetMean', label: 'Cut offset', min: 0, max: 25, step: 1, value: num('offset', 10) },
-  { key: 'offsetSd', label: 'Offset variability ±', min: 0, max: 10, step: 0.5, value: num('offsetSd', 6) },
+  { key: 'mu', label: 'Run length mu (1 = perfect interleaving)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
+  { key: 'overhangMean', label: 'Overhang (cards above the mesh)', min: 1, max: 15, step: 1, value: num('overhang', 3) },
+  { key: 'overhangSd', label: 'Overhang variability ±', min: 0, max: 8, step: 0.5, value: num('overhangSd', 2) },
   { key: 'positionDependence', label: 'Clumpier ends (mu profile)', min: 0, max: 3, step: 0.1, value: num('posDep', 0) },
 ];
 
@@ -67,20 +66,22 @@ app.innerHTML = `
   .readout .item .muted { display: block; }
 </style>
 <div class="card">
-  <p style="margin-top:0">A mash shuffle of a ${N}-card sleeved deck: cut off a
-  small packet, interleave in runs (mu = mean run length), the big packet's
-  remainder drops as an ordered block. GSR (blue) is the classic riffle model
-  for comparison; gray band = uniform mean ± 2 SD. Mixedness is
+  <p style="margin-top:0">A mash shuffle of a ${N}-card sleeved deck: lift the
+  BOTTOM packet, its first few cards (the overhang) become the new top, then
+  interleave in runs (mu = mean run length; 1 = perfect interleaving) down
+  into the rest — the big packet's remainder settles at the bottom, so cards
+  cycle and nothing freezes. GSR (blue) is the classic riffle model for
+  comparison; gray band = uniform mean ± 2 SD. Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
   ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
   <a href="validate.html">/validate</a> for the full definition and the
   calibration against the exact GSR theory anchors M_KNEE/M_FAIR, drawn as
   vertical lines on every chart with the log₂ floor).</p>
-  <p><strong>Try zeroing the cut offset with a 30-card split:</strong> the
-  interleave only ever reaches ~2× the split depth, so the bottom of the deck
-  is <em>frozen</em> — a habitual no-cut 30/70 mash never mixes, no matter how
-  many shuffles. The cut offset (or a bigger split) is what rescues it.</p>
+  <p><strong>Pass 1 (before real clump data):</strong> at mu=1 the only
+  randomness is the bottom-cut size and the overhang. Zero both variabilities
+  and the shuffle is a fixed permutation — it cycles forever and never mixes
+  (the faro lesson). Real hands wobble, and that wobble is what mixes.</p>
   <div class="sliders" id="sliders"></div>
   <label style="margin-top:10px">Remnant block lands on
     <select id="remnant">
@@ -108,8 +109,8 @@ function currentConfig(): MashConfig {
     splitMean: get('splitMean'),
     splitSd: get('splitSd'),
     mu: get('mu'),
-    offsetMean: get('offsetMean'),
-    offsetSd: get('offsetSd'),
+    overhangMean: get('overhangMean'),
+    overhangSd: get('overhangSd'),
     remnantEnd: remnantSel.value as 'top' | 'bottom',
     positionDependence: get('positionDependence'),
   };
@@ -180,8 +181,8 @@ function resim(): void {
     split: String(cfg.splitMean),
     splitSd: String(cfg.splitSd),
     mu: String(cfg.mu),
-    offset: String(cfg.offsetMean),
-    offsetSd: String(cfg.offsetSd),
+    overhang: String(cfg.overhangMean),
+    overhangSd: String(cfg.overhangSd),
     remnant: cfg.remnantEnd,
     posDep: String(cfg.positionDependence ?? 0),
   });

@@ -31,31 +31,31 @@ export interface SplitChoice {
   splitMean: number;
   splitSd: number;
 }
-export interface OffsetChoice {
+export interface OverhangChoice {
   label: string;
-  offsetMean: number;
-  offsetSd: number;
+  overhangMean: number;
+  overhangSd: number;
 }
 
-// The grid from the project brief: split {30,40,50,varied} × mu {1.1,1.3,2.0,3.0}
-// × offset {0, small, varied}.
+// Grid: split {30,40,50,varied} × mu {1.0 (perfect interleave), 1.3, 2.0,
+// 3.0} × overhang {flush, small, varied}.
 export const SPLIT_CHOICES: readonly SplitChoice[] = [
   { label: '30±3', splitMean: 30, splitSd: 3 },
   { label: '40±3', splitMean: 40, splitSd: 3 },
   { label: '50±3', splitMean: 50, splitSd: 3 },
   { label: 'varied 40±10', splitMean: 40, splitSd: 10 },
 ];
-export const MU_CHOICES: readonly number[] = [1.1, 1.3, 2.0, 3.0];
-export const OFFSET_CHOICES: readonly OffsetChoice[] = [
-  { label: 'none', offsetMean: 0, offsetSd: 0 },
-  { label: 'small 5±2', offsetMean: 5, offsetSd: 2 },
-  { label: 'varied 10±6', offsetMean: 10, offsetSd: 6 },
+export const MU_CHOICES: readonly number[] = [1.0, 1.3, 2.0, 3.0];
+export const OVERHANG_CHOICES: readonly OverhangChoice[] = [
+  { label: 'flush 1±0', overhangMean: 1, overhangSd: 0 },
+  { label: 'small 3±2', overhangMean: 3, overhangSd: 2 },
+  { label: 'varied 6±4', overhangMean: 6, overhangSd: 4 },
 ];
 
 export interface SweepRow {
   index: number;
   splitLabel: string;
-  offsetLabel: string;
+  overhangLabel: string;
   config: MashConfig;
   /** TOST certification — per-metric statuses plus the named binding metric */
   cert: CertificationResult;
@@ -72,12 +72,12 @@ export interface SweepResult {
   log2Floor: number;
 }
 
-export function buildGrid(): { splitChoice: SplitChoice; mu: number; offsetChoice: OffsetChoice }[] {
-  const grid: { splitChoice: SplitChoice; mu: number; offsetChoice: OffsetChoice }[] = [];
+export function buildGrid(): { splitChoice: SplitChoice; mu: number; overhangChoice: OverhangChoice }[] {
+  const grid: { splitChoice: SplitChoice; mu: number; overhangChoice: OverhangChoice }[] = [];
   for (const splitChoice of SPLIT_CHOICES) {
     for (const mu of MU_CHOICES) {
-      for (const offsetChoice of OFFSET_CHOICES) {
-        grid.push({ splitChoice, mu, offsetChoice });
+      for (const overhangChoice of OVERHANG_CHOICES) {
+        grid.push({ splitChoice, mu, overhangChoice });
       }
     }
   }
@@ -102,17 +102,17 @@ export function runSweep(
   });
 
   const rows: SweepRow[] = [];
-  grid.forEach(({ splitChoice, mu, offsetChoice }, i) => {
+  grid.forEach(({ splitChoice, mu, overhangChoice }, i) => {
     const config: MashConfig = {
       splitMean: splitChoice.splitMean,
       splitSd: splitChoice.splitSd,
       mu,
-      offsetMean: offsetChoice.offsetMean,
-      offsetSd: offsetChoice.offsetSd,
+      overhangMean: overhangChoice.overhangMean,
+      overhangSd: overhangChoice.overhangSd,
       remnantEnd: 'bottom',
       positionDependence: 0,
     };
-    const label = `split ${splitChoice.label}, mu ${mu}, offset ${offsetChoice.label}`;
+    const label = `split ${splitChoice.label}, mu ${mu}, overhang ${overhangChoice.label}`;
     progress?.(i + 1, total, label);
     const result = metricCurves(makeMashShuffle(config), {
       n: opts.n,
@@ -124,7 +124,7 @@ export function runSweep(
     const row: SweepRow = {
       index: i,
       splitLabel: splitChoice.label,
-      offsetLabel: offsetChoice.label,
+      overhangLabel: overhangChoice.label,
       config,
       cert: result.cert,
       shufflesToMix: result.shufflesToMix,
@@ -149,8 +149,8 @@ export function sweepToCsv(result: SweepResult): string {
     'splitMean',
     'splitSd',
     'mu',
-    'offsetMean',
-    'offsetSd',
+    'overhangMean',
+    'overhangSd',
     ...METRIC_NAMES.map((m) => `certifiedAt_${m}`),
     'certifiedMixed_worst',
     'bindingMetric',
@@ -162,8 +162,8 @@ export function sweepToCsv(result: SweepResult): string {
         row.config.splitMean,
         row.config.splitSd,
         row.config.mu,
-        row.config.offsetMean,
-        row.config.offsetSd,
+        row.config.overhangMean,
+        row.config.overhangSd,
         ...METRIC_NAMES.map((m) => fmtCertCsv(row.cert.perMetric[m])),
         fmtCertCsv(row.cert.overall),
         row.cert.bindingMetric ?? '',

@@ -43,10 +43,11 @@ app.innerHTML = `
 <div class="card">
   <details>
     <summary>Protocol (read once)</summary>
-    <p>Prepare the deck as a block of <strong style="color:var(--series-2)">R</strong>-sleeved
-    cards — your intended small packet — on top of
-    <strong style="color:var(--series-1)">B</strong>-sleeved cards. Cut at the color
-    boundary, mash once <em>the way you always mash</em>, then fan the deck and tap
+    <p>Prepare the deck with a block of <strong style="color:var(--series-2)">R</strong>-sleeved
+    cards — your intended small packet — on the <strong>bottom</strong>,
+    <strong style="color:var(--series-1)">B</strong>-sleeved cards on top. Lift the
+    bottom block at the color boundary and mash once <em>the way you always
+    mash</em> (its first cards become the new top), then fan the deck and tap
     the colors <strong>top to bottom</strong>.</p>
   </details>
   <div class="meta">

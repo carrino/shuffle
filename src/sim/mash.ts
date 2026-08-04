@@ -1,31 +1,54 @@
 // The mash operator: a run-length interleave model for sleeved "mash"
 // shuffles, NOT a GSR drop model.
 //
-// Physical picture: cut off a small packet (splitMean ± splitSd cards,
-// optionally offset into the deck by offsetMean ± offsetSd — the
-// bridge-style "top card always changes" habit), then mash the two packets
-// together. The result is built as alternating runs: on entering a packet a
-// run length is drawn from a shifted-geometric distribution with mean mu
-// (mu=1 ⇒ every run is 1 card ⇒ strict alternation ⇒ faro-like; mu≈2 ⇒
-// GSR-like; mu>2 ⇒ clumpy), truncated to what remains. Interleaving runs
-// until the SMALL packet is exhausted; the big packet's remainder drops as
-// one ordered block (a 30/70 mash of 100 cards leaves a ~40-card ordered
-// remnant) on the configured end.
+// Physical mechanic (this is the important part): the small packet is lifted
+// from the BOTTOM of the deck (splitMean ± splitSd cards) and mashed into
+// the rest from the top — its leading cards become the new top of the deck.
+// In a 100-card deck with a ~35 split, the cards at old positions ~65–67
+// become new positions 0–2, interleaving proceeds downward from there, and
+// the unconsumed tail of the big packet settles as one ordered block at the
+// bottom. Because the bottom block moves to the top on every shuffle, cards
+// CYCLE through the deck — there are no cold spots by design.
+//
+// Before any interleaving happens, the lifted packet's head "hangs over"
+// the top: the first `overhang` cards drop as one block (old positions
+// ~65-67 becoming new 0-2 IS an overhang of 3), and interleaving starts
+// below them. In pass 1 — before real clump data — the randomness comes
+// entirely from the bottom-cut size (splitMean ± splitSd) and the overhang
+// (overhangMean ± overhangSd).
+//
+// The interleave itself is a run-length model: on entering a packet a run
+// length is drawn from a shifted-geometric distribution with mean mu (mu=1 ⇒
+// every run is 1 card ⇒ perfect interleaving; larger mu ⇒ clumpier),
+// truncated to what remains. Interleaving runs until the SMALL packet is
+// exhausted; the big packet's remainder drops as one ordered block (a 30/70
+// mash of 100 cards leaves a ~40-card ordered remnant). The baseline
+// question is "how many shuffles at mu=1 (perfect interleaving)?"; fitted
+// real-world clump rates (mu > 1) then adjust it.
 
 import type { PRNG } from './prng';
 
 export interface MashConfig {
-  /** mean size of the small packet (e.g. 30 of 100) */
+  /** mean size of the small (bottom-lifted) packet, e.g. 35 of 100 */
   splitMean: number;
   /** SD of the small packet size (0 = exact) */
   splitSd: number;
-  /** mean run length; 1 = strict alternation, ~2 = GSR-like, >2 = clumpy */
+  /** mean run length; 1 = perfect interleaving, >1 = clumpy */
   mu: number;
-  /** mean of the pre-cut offset (cards rotated top→bottom before splitting) */
-  offsetMean: number;
-  /** SD of the pre-cut offset */
-  offsetSd: number;
-  /** which end of the resulting deck the big packet's ordered remnant lands on */
+  /**
+   * Mean overhang: how many lifted-packet cards sit above the mesh as one
+   * block before interleaving starts (min 1 — the lifted packet's head is
+   * always the new top card). Directly observable in two-color data as the
+   * leading small-color run.
+   */
+  overhangMean: number;
+  /** SD of the overhang */
+  overhangSd: number;
+  /**
+   * Which end of the result the big packet's ordered remnant lands on.
+   * 'bottom' is the physical default (mash into the top, remainder settles
+   * underneath); 'top' models mashing the lifted packet in from below.
+   */
   remnantEnd: 'top' | 'bottom';
   /**
    * Optional mu profile along the deck: effective mu at build position t
@@ -36,11 +59,11 @@ export interface MashConfig {
 }
 
 export const DEFAULT_MASH: MashConfig = {
-  splitMean: 30,
+  splitMean: 35,
   splitSd: 3,
-  mu: 1.3,
-  offsetMean: 0,
-  offsetSd: 0,
+  mu: 1,
+  overhangMean: 3,
+  overhangSd: 2,
   remnantEnd: 'bottom',
   positionDependence: 0,
 };
@@ -72,41 +95,51 @@ function runLength(mu: number, cap: number, rng: PRNG): number {
 export interface MashDraw {
   /** actual small-packet size this shuffle */
   split: number;
-  /** actual pre-cut offset this shuffle */
-  offset: number;
+  /** actual overhang this shuffle */
+  overhang: number;
 }
 
 /**
  * One mash shuffle, in place. `scratch` must be the same length as `deck`.
- * Returns the sampled split/offset (used by fitting round-trips).
+ * Returns the sampled split/overhang (used by fitting round-trips).
+ *
+ * With split s, the small packet A is the deck's bottom s cards
+ * (A[i] = deck[n-s+i]); the big packet B is the top n-s. A's first
+ * `overhang` cards drop as one block on top, then run-length interleaving
+ * alternates starting from B.
  */
 export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: MashConfig): MashDraw {
   const n = deck.length;
   const { a: A, b: B } = buffers(n);
 
   const s = clamp(Math.round(cfg.splitMean + cfg.splitSd * rng.nextGaussian()), 1, n - 1);
-  const offset =
-    cfg.offsetMean === 0 && cfg.offsetSd === 0
-      ? 0
-      : clamp(Math.round(cfg.offsetMean + cfg.offsetSd * rng.nextGaussian()), 0, n - 1);
+  const overhang =
+    cfg.overhangMean <= 1 && cfg.overhangSd === 0
+      ? 1
+      : clamp(Math.round(cfg.overhangMean + cfg.overhangSd * rng.nextGaussian()), 1, s);
 
-  // Pre-cut rotation by `offset`, then split: small packet = top s cards.
-  for (let i = 0; i < s; i++) A[i] = deck[(i + offset) % n]!;
-  for (let i = s; i < n; i++) B[i - s] = deck[(i + offset) % n]!;
+  // Lift the BOTTOM s cards as the small packet A; the top n-s stay as B.
   const nB = n - s;
+  for (let i = 0; i < s; i++) A[i] = deck[nB + i]!;
+  for (let i = 0; i < nB; i++) B[i] = deck[i]!;
 
   const fromTop = cfg.remnantEnd === 'bottom';
   const posDep = cfg.positionDependence ?? 0;
 
-  // Build the interleave zone consuming the small packet completely. For
-  // remnantEnd='bottom' we consume packet heads and build top-down; for
-  // remnantEnd='top' we consume packet tails and build bottom-up — the
-  // remnant (B's unconsumed part) then sits at the top. Within-packet order
-  // is preserved in both directions.
+  // Build: the overhang block of A first (its head is the new top card),
+  // then run-length interleaving starting from B, consuming the small
+  // packet completely. For remnantEnd='bottom' we consume packet heads and
+  // build top-down; for remnantEnd='top' we consume packet tails and build
+  // bottom-up (A's tail becomes the new bottom card) — the remnant (B's
+  // unconsumed part) then sits on top. Within-packet order is preserved in
+  // both directions.
   let ia = 0;
   let ib = 0;
   let k = 0; // cards written
-  let turnA = rng.nextInt(2) === 0;
+  for (let i = 0; i < overhang && ia < s; i++, ia++, k++) {
+    scratch[fromTop ? k : n - 1 - k] = fromTop ? A[ia]! : A[s - 1 - ia]!;
+  }
+  let turnA = false; // interleaving starts from the big packet
   while (ia < s && ib < nB) {
     const t = k / n;
     const muEff = Math.max(1, cfg.mu * (1 + posDep * (2 * t - 1) * (2 * t - 1)));
@@ -136,7 +169,7 @@ export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: Mash
     k++;
   }
   deck.set(scratch);
-  return { split: s, offset };
+  return { split: s, overhang };
 }
 
 /** Partially-applied form matching the ShuffleFn signature. */

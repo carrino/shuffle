@@ -25,20 +25,31 @@ either direction, to a 100-card sleeved deck. Hence this project.
 ## The run-length mash model
 
 `mash(deck, cfg, rng)` (Phase 2) models a sleeved mash directly rather than
-via GSR drops:
+via GSR drops. The mechanic matters:
 
-- split off a small packet of `splitMean ± splitSd` cards (e.g. 30±3 of 100),
-  optionally offset from the top by `offsetMean ± offsetSd` (the bridge-style
-  "top card always changes" habit);
-- build the result as **alternating runs**: on entering a packet, draw a run
-  length from a tunable distribution with mean `mu` — `mu=1` is strict
-  alternation (faro-like, does not mix), `mu≈2` geometric is GSR-like, `mu>2`
-  is clumpy;
+- **the small packet is lifted from the BOTTOM** (`splitMean ± splitSd`
+  cards, e.g. 35±3 of 100) and mashed into the rest from the top — in a
+  100-card deck the cards at old positions ~65–67 become the new top.
+  Because the bottom block moves to the top every shuffle, cards **cycle**
+  through the deck: there are no cold spots by design;
+- the lifted packet's first few cards — the **overhang**
+  (`overhangMean ± overhangSd`) — drop as one block above the mesh before
+  interleaving starts;
+- below the overhang the result is built as **alternating runs**: on
+  entering a packet, draw a run length from a tunable distribution with mean
+  `mu` — `mu=1` is perfect interleaving, `mu>1` is clumpy;
 - interleave until the **small** packet is exhausted; the big packet's
   remainder drops as one ordered block (a 30/70 mash of 100 cards leaves a
   ~40-card ordered remnant) at a configurable end;
 - optional `positionDependence`: a `mu` profile along the deck (people mash
   clumpier at the ends).
+
+**Pass 1** — before any real clump data — asks the baseline question: how
+many shuffles assuming *perfect interleaving* (`mu=1`), where the only
+randomness is the bottom-cut size and the overhang? Fitted real-world clump
+rates then adjust the answer. Note both the split and the overhang are
+directly observable in the two-color capture data (the overhang is exactly
+the leading small-color run).
 
 Fitting real two-color observations (Phase 4) recovers these parameters per
 collector.
@@ -48,21 +59,23 @@ collector.
 Under `certifiedMixed(c=0.25, α=0.05)` at T=1000, n=100 (GSR certifies at
 ~11–12, consistent with M_FAIR = 12):
 
-- **A habitual no-cut 30/70 mash never mixes.** The interleave zone only
-  reaches ~2× the split depth, so the bottom ~40 cards are frozen forever.
-  The cut-offset habit (or a bigger split) is what rescues it: 30/70 with a
-  10±6 cut certifies around ~17.
-- **With realistic split variance, cleaner interleaving mixes *faster*, not
-  slower.** A ±3-card split wobble breaks the perfect-interleave degeneracy,
-  while clumpy runs (mu ≈ 3) preserve ordered blocks — rising-sequence bias
-  is monotone *increasing* in mu at every split in the sweep grid. The
-  non-mixing faro pathology needs an exactly equal, zero-variance split.
-- **An equal-ish sleeved mash (50±3, mu ≈ 1.3) certifies in ~9–10 shuffles**,
-  slightly ahead of GSR — the remnant block, not interleave cleanliness, is
-  the main enemy for lopsided splits.
+- **The pass-1 answer: a typical 35/65 mash with perfect interleaving and
+  natural hand-wobble (split ±3, overhang 3±2) certifies in ~13 shuffles** —
+  only a shuffle or two behind pure GSR, despite zero drop randomness.
+  Equal-ish splits (50±3) get to ~10; a 30-split is also ~13.
+- **The wobble is the randomness.** Zero out both the split variance and the
+  overhang variance and the shuffle is a fixed permutation — it cycles
+  forever and never mixes (mu=1 + equal split + flush overhang IS the
+  in-faro, reproduced exactly by a limit test). Split variance alone: ~14;
+  overhang variance alone: ~18; both: ~13.
+- **Perfect interleaving is not the enemy — clumps are.** At the same
+  wobble, mu=1.3 certifies ~12, mu=2 ~17, mu=3 ~23. Rising-sequence bias is
+  monotone increasing in mu from 1.3 up at every grid split (near mu=1 the
+  wobble dominates and mild clumps can even help slightly).
 
-These are model results; the /data page's fitted per-collector configs are
-the ground truth to re-run against.
+These are model results assuming the run-length interleave model; the /data
+page's fitted per-collector configs (real split, overhang, and clump rates)
+are the ground truth to re-run against.
 
 ## Randomness metrics (and their uniform references, n=100)
 
@@ -72,12 +85,16 @@ the ground truth to re-run against.
 | Adjacent-pair displacement | mean (n+1)/3 ≈ 33.67 (SD MC-calibrated ≈ 2.11) | mean over v of \|pos(v+1) − pos(v)\| |
 | Spearman ρ vs start | mean 0, SD 1/√(n−1) ≈ 0.1005 | rank correlation with the starting order |
 | Random linear functionals | max\|z\| of 5, mean ≈ 1.57, SD ≈ 0.556 | 5 fixed seeded weight vectors · position-of-value; z vs 10⁵-permutation MC reference |
-| P(top card at home) | mean 1/n = 0.01, SD √(p(1−p)) ≈ 0.0995 (exact) | GSR excess ≈ λ/2 relative with λ = n/2^m (overlaid on /validate); stays biased after rising sequences saturate — the late-stage-sensitive check |
 | Sequential guesser | mean H_n ≈ 5.19, SD √Σ(1/k)(1−1/k) ≈ 1.88 (exact) | expected correct guesses, full memory, rising-sequence-tracking guesser; under uniform ANY strategy scores H_n in expectation (per-step P = 1/k independent of history) — the "exploitable during play" metric |
 
 Adjacency *retention* is deliberately not a headline metric: a clean
 interleave separates all neighbors in one pass and would look "random" while
-being perfectly structured.
+being perfectly structured. **P(top card at home)** is likewise NOT a
+certification metric — the mash mechanic cycles the bottom packet to the
+top, so the top card always changes unless someone is palming it — but it
+remains a GSR-only diagnostic on /validate: the GSR excess ≈ λ/2 (relative,
+λ = n/2^m) visibly outlives rising-sequence saturation and pins the
+simulator to the known (1+λ/2)/n law.
 
 ## What "mixed" means (two layers + a calibration invariant)
 
@@ -151,17 +168,16 @@ checks passed in CI (`npm test` runs them; `npm run validate:report` writes
 
 - **(a) Uniform references** — 10⁵ random permutations reproduce every
   battery metric's documented mean/SD within MC error (including the exact
-  H_n mean/SD of the sequential guesser and the Bernoulli reference of
-  topCardHome).
+  H_n mean/SD of the sequential guesser).
 - **(b) Single-riffle invariant** — one GSR from sorted ⇒ rising sequences
   ≤ 2; after k riffles ≤ 2^k. Any violation is a bug, full stop.
 - **(c) Faro control** — out-faro on 52 returns to start in exactly 8
   shuffles; repeated faro cycles forever and never certifies.
 - **(d) GSR convergence vs anchors** — the rising-sequence statistic's
   residual bias tracks the exact anchor as bias ≈ 2.7 × TV(m) and its
-  certification boundary lands where the anchors predict; topCardHome
-  follows the (1 + λ/2)/n excess law within MC error; the other metrics
-  certify in sane windows.
+  certification boundary lands where the anchors predict; the GSR-only
+  topCardHome diagnostic follows the (1 + λ/2)/n excess law within MC
+  error; the other metrics certify in sane windows.
 - **(e) Rising-sequence floor** — rising sequences never certify below
   ⌈log₂((n+1)/2)⌉ (weak metrics can — which is why the binding metric is
   always named).

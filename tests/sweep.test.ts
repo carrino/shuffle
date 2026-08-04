@@ -57,7 +57,11 @@ describe('sweep', () => {
       }
       return s;
     };
-    const mus = [1.1, 1.3, 2.0, 3.0];
+    // From mu >= 1.3 clumpier is strictly slower. Near mu=1 the split and
+    // overhang variance dominates and the ordering can locally invert
+    // (mild clumps + variance sometimes beat perfect interleaving), so the
+    // monotonicity claim starts at 1.3.
+    const mus = [1.3, 2.0, 3.0];
     for (const a of result.rows) {
       const i = mus.indexOf(a.config.mu);
       if (i < 0 || i === mus.length - 1) continue;
@@ -65,7 +69,7 @@ describe('sweep', () => {
         (r) =>
           r.config.mu === mus[i + 1] &&
           r.splitLabel === a.splitLabel &&
-          r.offsetLabel === a.offsetLabel,
+          r.overhangLabel === a.overhangLabel,
       )!;
       // noise per term ~1/sqrt(T); allow generous slack, ordering must hold
       expect(bias(a)).toBeLessThanOrEqual(bias(b) + 1.5);

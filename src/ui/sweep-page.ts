@@ -11,11 +11,12 @@ mountNav('sweep.html');
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="card">
-    <p style="margin-top:0">Grid: split {30±3, 40±3, 50±3, varied 40±10} ×
-    mu {1.1, 1.3, 2.0, 3.0} × offset {none, small, varied} — 48 configs,
-    n=100, remnant at bottom. Each config's per-metric shuffles-to-mix is
-    measured from trajectory curves against the uniform references, alongside
-    a GSR baseline at the same settings. Runs in a Web Worker.</p>
+    <p style="margin-top:0">Grid: bottom-cut {30±3, 40±3, 50±3, varied 40±10}
+    × mu {1.0 (perfect interleaving), 1.3, 2.0, 3.0} × overhang {flush 1±0,
+    small 3±2, varied 6±4} — 48 configs, n=100, remnant at bottom. Each
+    config's per-metric certification is measured from trajectory curves
+    against the uniform references, alongside a GSR baseline at the same
+    settings. Runs in a Web Worker.</p>
     <label>Trajectories per config
       <input id="traj" type="number" value="${DEFAULT_SWEEP.T}" min="100" max="5000" step="100" style="width:7em">
     </label>
@@ -82,7 +83,7 @@ csvBtn.addEventListener('click', () => {
 const COLS: { key: string; label: string; value: (r: SweepRow) => number | string }[] = [
   { key: 'splitLabel', label: 'split', value: (r) => r.splitLabel },
   { key: 'mu', label: 'mu', value: (r) => r.config.mu },
-  { key: 'offsetLabel', label: 'offset', value: (r) => r.offsetLabel },
+  { key: 'overhangLabel', label: 'overhang', value: (r) => r.overhangLabel },
   ...METRIC_NAMES.map((m) => ({
     key: `m_${m}`,
     label: shortMetric(m),
@@ -98,7 +99,6 @@ function shortMetric(m: MetricName): string {
     adjacentPairDisplacement: 'adjΔ',
     spearmanToStart: 'spearman',
     maxLinearFunctionalZ: 'lin.func',
-    topCardHome: 'topcard',
     sequentialGuesser: 'guesser',
   }[m];
 }
@@ -173,7 +173,7 @@ function renderDetail(): void {
   if (!row) return;
   for (const d of detailDisposers) d();
   detailDisposers.length = 0;
-  detailEl.innerHTML = `<h2>split ${row.splitLabel} · mu ${row.config.mu} · offset ${row.offsetLabel}
+  detailEl.innerHTML = `<h2>split ${row.splitLabel} · mu ${row.config.mu} · overhang ${row.overhangLabel}
     <span class="muted">certified ${fmtCell(certCell(row.cert.overall))}, binding ${row.cert.bindingMetric ?? '—'}
     (GSR: ${fmtCell(certCell(result.baseline.cert.overall))}; floor ${result.log2Floor})</span></h2>`;
   const grid = document.createElement('div');

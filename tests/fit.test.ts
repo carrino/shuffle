@@ -19,7 +19,8 @@ function rec(string: string, intendedSplit = 3, collector = 'x'): MashRecord {
 /**
  * Synthesize a two-color observation from a known MashConfig: run one mash
  * on an identity deck and color each card by its actual packet membership
- * (R = small packet), exactly what the capture protocol records.
+ * (R = the lifted bottom packet, values >= n - split), exactly what the
+ * capture protocol records.
  */
 function synthesize(cfg: MashConfig, n: number, seed: number, count: number, collector = 'sim'): MashRecord[] {
   const rng = makePRNG(seed);
@@ -31,9 +32,7 @@ function synthesize(cfg: MashConfig, n: number, seed: number, count: number, col
     const draw = mash(deck, scratch, rng, cfg);
     let s = '';
     for (let j = 0; j < n; j++) {
-      const v = deck[j]!;
-      const inSmall = (v - draw.offset + n) % n < draw.split;
-      s += inSmall ? 'R' : 'B';
+      s += deck[j]! >= n - draw.split ? 'R' : 'B';
     }
     records.push({ ...rec(s, Math.round(cfg.splitMean), collector), n });
   }
@@ -41,27 +40,36 @@ function synthesize(cfg: MashConfig, n: number, seed: number, count: number, col
 }
 
 describe('analyzeString (hand-checked)', () => {
-  it('splits runs, remnant and counts on RBRBBB', () => {
+  it('splits runs, remnant, overhang and counts on RBRBBB', () => {
     const a = analyzeString(rec('RBRBBB', 2));
     expect(a.actualSplit).toBe(2);
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(3);
-    expect(a.runs).toEqual([1, 1, 1]); // zone = RBR
-    expect(a.leadingBlock).toBe(0);
+    expect(a.overhang).toBe(1); // leading R run
+    expect(a.runs).toEqual([1, 1]); // zone = RBR minus the overhang run
   });
 
-  it('detects a top remnant on BBBBRBRB', () => {
+  it('reads the overhang as the leading small-color run', () => {
+    const a = analyzeString(rec('RRRBRBBBBB', 4));
+    expect(a.remnantEnd).toBe('bottom');
+    expect(a.remnantSize).toBe(5);
+    expect(a.overhang).toBe(3); // RRR before the mesh
+    expect(a.runs).toEqual([1, 1]); // zone = RRRBR minus overhang
+  });
+
+  it('detects a top remnant on BBBBRBRB (B-led bottom = overhang anomaly 0)', () => {
     const a = analyzeString(rec('BBBBRBRB', 2));
     expect(a.remnantEnd).toBe('top');
     expect(a.remnantSize).toBe(4);
+    expect(a.overhang).toBe(0); // string ends with B: no small-color lead
     expect(a.runs).toEqual([1, 1, 1, 1]); // zone = RBRB
   });
 
-  it('measures a leading big-color block opposite the remnant', () => {
+  it('a big-color lead reads as overhang 0, runs stay interior', () => {
     const a = analyzeString(rec('BBRRBRBBBB', 3));
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(4);
-    expect(a.leadingBlock).toBe(2);
+    expect(a.overhang).toBe(0);
     expect(a.runs).toEqual([2, 2, 1, 1]); // zone = BBRRBR
   });
 });
@@ -72,8 +80,8 @@ describe('fit roundtrip — synthesize from a known config, recover it', () => {
       splitMean: 30,
       splitSd: 3,
       mu: 1.4,
-      offsetMean: 0,
-      offsetSd: 0,
+      overhangMean: 1,
+      overhangSd: 0,
       remnantEnd: 'bottom',
       positionDependence: 0,
     };
@@ -93,8 +101,8 @@ describe('fit roundtrip — synthesize from a known config, recover it', () => {
       splitMean: 35,
       splitSd: 2,
       mu: 2.2,
-      offsetMean: 0,
-      offsetSd: 0,
+      overhangMean: 1,
+      overhangSd: 0,
       remnantEnd: 'top',
       positionDependence: 0,
     };
@@ -109,8 +117,8 @@ describe('fit roundtrip — synthesize from a known config, recover it', () => {
       splitMean: 40,
       splitSd: 2,
       mu: 1.6,
-      offsetMean: 0,
-      offsetSd: 0,
+      overhangMean: 1,
+      overhangSd: 0,
       remnantEnd: 'bottom',
       positionDependence: 0,
     };
@@ -125,33 +133,30 @@ describe('fit roundtrip — synthesize from a known config, recover it', () => {
     expect((a + c) / 2).toBeGreaterThan(mid + 0.15);
   });
 
-  it('rotation-style offset is invisible in colors (documented limit)', () => {
-    // The pre-cut rotation relabels which cards form the packets; colors are
-    // assigned by actual membership, so the fitted offset stays ~0. A real
-    // collector habit shows up instead as a leading ordered block, which
-    // analyzeString measures (see hand-check above).
+  it('recovers the overhang habit directly from leading runs', () => {
     const cfg: MashConfig = {
       splitMean: 30,
       splitSd: 2,
       mu: 1.5,
-      offsetMean: 8,
-      offsetSd: 2,
+      overhangMean: 5,
+      overhangSd: 2,
       remnantEnd: 'bottom',
       positionDependence: 0,
     };
-    const fit = fitRecords('sim', synthesize(cfg, 100, 9, 200));
-    expect(fit.config.offsetMean).toBeLessThan(2);
+    const fit = fitRecords('sim', synthesize(cfg, 100, 9, 300));
+    expect(Math.abs(fit.config.overhangMean - 5)).toBeLessThan(0.5);
+    expect(Math.abs(fit.config.overhangSd - 2)).toBeLessThan(0.6);
   });
 });
 
 describe('fitAll grouping', () => {
   it('fits per collector and appends a labeled pooled fit', () => {
     const a = synthesize(
-      { splitMean: 30, splitSd: 2, mu: 1.2, offsetMean: 0, offsetSd: 0, remnantEnd: 'bottom' },
+      { splitMean: 30, splitSd: 2, mu: 1.2, overhangMean: 1, overhangSd: 0, remnantEnd: 'bottom' },
       100, 11, 50, 'ana',
     );
     const b = synthesize(
-      { splitMean: 45, splitSd: 2, mu: 2.5, offsetMean: 0, offsetSd: 0, remnantEnd: 'bottom' },
+      { splitMean: 45, splitSd: 2, mu: 2.5, overhangMean: 1, overhangSd: 0, remnantEnd: 'bottom' },
       100, 12, 50, 'bob',
     );
     const fits = fitAll([...a, ...b]);
@@ -168,7 +173,7 @@ describe('fitAll grouping', () => {
 
   it('single collector: no pooled duplicate', () => {
     const a = synthesize(
-      { splitMean: 30, splitSd: 2, mu: 1.2, offsetMean: 0, offsetSd: 0, remnantEnd: 'bottom' },
+      { splitMean: 30, splitSd: 2, mu: 1.2, overhangMean: 1, overhangSd: 0, remnantEnd: 'bottom' },
       100, 13, 20, 'solo',
     );
     const fits = fitAll(a);
