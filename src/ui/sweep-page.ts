@@ -11,12 +11,18 @@ mountNav('sweep.html');
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="card">
-    <p style="margin-top:0">Grid: bottom-cut {30±3, 40±3, 50±3, varied 40±10}
-    × mu {1.0 (perfect interleaving), 1.3, 2.0, 3.0} × overhang {flush 1±0,
-    small 3±2, varied 6±4} — 48 configs, n=100, remnant at bottom. Each
-    config's per-metric certification is measured from trajectory curves
-    against the uniform references, alongside a GSR baseline at the same
-    settings. Runs in a Web Worker.</p>
+    <p style="margin-top:0">Grid: bottom-cut {30%, 40%, 50% of the deck ±3,
+    varied 40%±10%} × mu {1.0 (perfect interleaving), 1.3, 2.0, 3.0} ×
+    overhang {flush 1±0, small 3±2, varied 6±4} — 48 configs, remnant at
+    bottom. Each config's per-metric certification is measured from
+    trajectory curves against the uniform references, alongside a GSR
+    baseline at the same settings. Runs in a Web Worker.</p>
+    <label>Deck size
+      <select id="deckSize" style="width:12em">
+        <option value="60">60 (standard)</option>
+        <option value="100" selected>100 (commander)</option>
+      </select>
+    </label>
     <label>Trajectories per config
       <input id="traj" type="number" value="${DEFAULT_SWEEP.T}" min="100" max="5000" step="100" style="width:7em">
     </label>
@@ -51,6 +57,7 @@ runBtn.addEventListener('click', () => {
   resultsEl.innerHTML = '';
   detailEl.innerHTML = '';
   const T = Number((document.getElementById('traj') as HTMLInputElement).value) || DEFAULT_SWEEP.T;
+  const n = Number((document.getElementById('deckSize') as HTMLSelectElement).value) === 60 ? 60 : 100;
   const worker = new Worker(new URL('./sweep.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e) => {
     const msg = e.data;
@@ -67,7 +74,7 @@ runBtn.addEventListener('click', () => {
       renderTable();
     }
   };
-  worker.postMessage({ T });
+  worker.postMessage({ T, n });
 });
 
 csvBtn.addEventListener('click', () => {

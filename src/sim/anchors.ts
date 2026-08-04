@@ -12,13 +12,19 @@
 // Exact Bayer-Diaconis TV distance to uniform after m GSR riffles,
 // rounded to 6 decimal places. Do not edit by hand; rerun the script.
 export const EXACT_TV_52: readonly number[] = [1.000000, 1.000000, 1.000000, 1.000000, 0.923733, 0.613550, 0.334061, 0.167159, 0.085420, 0.042946, 0.021502, 0.010755, 0.005378, 0.002689, 0.001345, 0.000672]; // m=1..16
+export const EXACT_TV_60: readonly number[] = [1.000000, 1.000000, 1.000000, 1.000000, 0.976380, 0.713215, 0.406180, 0.206920, 0.105177, 0.053035, 0.026574, 0.013294, 0.006648, 0.003324, 0.001662, 0.000831]; // m=1..16
 export const EXACT_TV_100: readonly number[] = [1.000000, 1.000000, 1.000000, 1.000000, 1.000000, 0.981526, 0.747347, 0.428803, 0.223922, 0.112168, 0.056637, 0.028388, 0.014203, 0.007103, 0.003551, 0.001776]; // m=1..16
 
+export type AnchoredDeckSize = 52 | 60 | 100;
+
+function tvTable(n: AnchoredDeckSize): readonly number[] {
+  return n === 52 ? EXACT_TV_52 : n === 60 ? EXACT_TV_60 : EXACT_TV_100;
+}
+
 /** TV(m) for deck size n (m is 1-based; returns 0 beyond the table). */
-export function exactTV(n: 52 | 100, m: number): number {
-  const table = n === 52 ? EXACT_TV_52 : EXACT_TV_100;
+export function exactTV(n: AnchoredDeckSize, m: number): number {
   if (m < 1) return 1;
-  return table[m - 1] ?? 0;
+  return tvTable(n)[m - 1] ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -33,8 +39,8 @@ export function exactTV(n: 52 | 100, m: number): number {
 // which is why the sequentialGuesser metric exists.
 
 /** First m with TV(m) <= eps (Infinity if the table never gets there). */
-export function mShufflesFor(n: 52 | 100, eps: number): number {
-  const table = n === 52 ? EXACT_TV_52 : EXACT_TV_100;
+export function mShufflesFor(n: AnchoredDeckSize, eps: number): number {
+  const table = tvTable(n);
   for (let m = 1; m <= table.length; m++) {
     if (table[m - 1]! <= eps) return m;
   }
@@ -50,12 +56,16 @@ export const M_KNEE_52 = mShufflesFor(52, EPS_KNEE); // 7
 export const M_FAIR_52 = mShufflesFor(52, EPS_FAIR); // 10
 export const M_STRICT_52 = mShufflesFor(52, EPS_STRICT); // 13
 
+export const M_KNEE_60 = mShufflesFor(60, EPS_KNEE); // 7
+export const M_FAIR_60 = mShufflesFor(60, EPS_FAIR); // 11
+export const M_STRICT_60 = mShufflesFor(60, EPS_STRICT); // 13
+
 export const M_KNEE_100 = mShufflesFor(100, EPS_KNEE); // 8
 export const M_FAIR_100 = mShufflesFor(100, EPS_FAIR); // 12
 export const M_STRICT_100 = mShufflesFor(100, EPS_STRICT); // 14
 
-export function theoryMilestones(n: 52 | 100): { knee: number; fair: number; strict: number } {
-  return n === 52
-    ? { knee: M_KNEE_52, fair: M_FAIR_52, strict: M_STRICT_52 }
-    : { knee: M_KNEE_100, fair: M_FAIR_100, strict: M_STRICT_100 };
+export function theoryMilestones(n: AnchoredDeckSize): { knee: number; fair: number; strict: number } {
+  if (n === 52) return { knee: M_KNEE_52, fair: M_FAIR_52, strict: M_STRICT_52 };
+  if (n === 60) return { knee: M_KNEE_60, fair: M_FAIR_60, strict: M_STRICT_60 };
+  return { knee: M_KNEE_100, fair: M_FAIR_100, strict: M_STRICT_100 };
 }

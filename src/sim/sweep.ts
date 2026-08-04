@@ -37,14 +37,18 @@ export interface OverhangChoice {
   overhangSd: number;
 }
 
-// Grid: split {30,40,50,varied} × mu {1.0 (perfect interleave), 1.3, 2.0,
-// 3.0} × overhang {flush, small, varied}.
-export const SPLIT_CHOICES: readonly SplitChoice[] = [
-  { label: '30±3', splitMean: 30, splitSd: 3 },
-  { label: '40±3', splitMean: 40, splitSd: 3 },
-  { label: '50±3', splitMean: 50, splitSd: 3 },
-  { label: 'varied 40±10', splitMean: 40, splitSd: 10 },
-];
+// Grid: split {30%, 40%, 50%, varied 40%} of the deck × mu {1.0 (perfect
+// interleave), 1.3, 2.0, 3.0} × overhang {flush, small, varied}. Split
+// means scale with deck size (60 or 100); the ±3 hand wobble is absolute.
+export function splitChoices(n: number): readonly SplitChoice[] {
+  const at = (frac: number) => Math.round(n * frac);
+  return [
+    { label: `${at(0.3)}±3`, splitMean: at(0.3), splitSd: 3 },
+    { label: `${at(0.4)}±3`, splitMean: at(0.4), splitSd: 3 },
+    { label: `${at(0.5)}±3`, splitMean: at(0.5), splitSd: 3 },
+    { label: `varied ${at(0.4)}±${Math.round(n / 10)}`, splitMean: at(0.4), splitSd: Math.round(n / 10) },
+  ];
+}
 export const MU_CHOICES: readonly number[] = [1.0, 1.3, 2.0, 3.0];
 export const OVERHANG_CHOICES: readonly OverhangChoice[] = [
   { label: 'flush 1±0', overhangMean: 1, overhangSd: 0 },
@@ -72,9 +76,9 @@ export interface SweepResult {
   log2Floor: number;
 }
 
-export function buildGrid(): { splitChoice: SplitChoice; mu: number; overhangChoice: OverhangChoice }[] {
+export function buildGrid(n = 100): { splitChoice: SplitChoice; mu: number; overhangChoice: OverhangChoice }[] {
   const grid: { splitChoice: SplitChoice; mu: number; overhangChoice: OverhangChoice }[] = [];
-  for (const splitChoice of SPLIT_CHOICES) {
+  for (const splitChoice of splitChoices(n)) {
     for (const mu of MU_CHOICES) {
       for (const overhangChoice of OVERHANG_CHOICES) {
         grid.push({ splitChoice, mu, overhangChoice });
@@ -89,7 +93,7 @@ export function runSweep(
   progress?: (done: number, total: number, label: string) => void,
   onRow?: (row: SweepRow) => void,
 ): SweepResult {
-  const grid = buildGrid();
+  const grid = buildGrid(opts.n);
   const total = grid.length + 1;
 
   progress?.(0, total, 'GSR baseline');

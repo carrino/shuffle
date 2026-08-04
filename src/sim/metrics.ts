@@ -329,10 +329,11 @@ export function uniformReference(n: number, metric: MetricName): UniformRef {
   }
 }
 
-// MC-calibrated SD of adjacentPairDisplacement under uniform (4*10^4 samples,
-// tools-side calibration): n=52 -> 1.508, n=100 -> 2.109. Roughly ~ n/48.
+// MC-calibrated SD of adjacentPairDisplacement under uniform (tools-side
+// calibration): n=52 -> 1.508, n=60 -> 1.615, n=100 -> 2.109. Roughly ~ n/48.
 function adjSdApprox(n: number): number {
   if (n === 52) return 1.508;
+  if (n === 60) return 1.615;
   if (n === 100) return 2.109;
   return n / 48; // rough fallback; MC tests pin the sizes we actually use
 }

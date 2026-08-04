@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   EXACT_TV_52,
+  EXACT_TV_60,
   EXACT_TV_100,
   exactTV,
+  theoryMilestones,
   mShufflesFor,
   M_KNEE_52,
   M_FAIR_52,
@@ -23,7 +25,7 @@ describe('Bayer-Diaconis exact TV anchors', () => {
   });
 
   it('tables are monotone non-increasing and asymptotically halve', () => {
-    for (const table of [EXACT_TV_52, EXACT_TV_100]) {
+    for (const table of [EXACT_TV_52, EXACT_TV_60, EXACT_TV_100]) {
       for (let i = 1; i < table.length; i++) {
         expect(table[i]!).toBeLessThanOrEqual(table[i - 1]! + 1e-12);
       }
@@ -52,6 +54,9 @@ describe('Bayer-Diaconis exact TV anchors', () => {
     expect(M_KNEE_100).toBe(8);
     expect(M_FAIR_100).toBe(12);
     expect(M_STRICT_100).toBe(14);
+    expect(theoryMilestones(60)).toEqual({ knee: 7, fair: 11, strict: 13 });
+    expect(EXACT_TV_60.length).toBe(16);
+    expect(exactTV(60, 7)).toBeCloseTo(0.40618, 5);
     // boundary semantics: first m with TV <= eps
     expect(mShufflesFor(52, EXACT_TV_52[6]!)).toBe(7);
     expect(mShufflesFor(100, 1)).toBe(1);

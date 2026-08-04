@@ -9,9 +9,8 @@ import { metricCurves, type CurveResult, type CertStatus } from '../sim/experime
 import { gsr } from '../sim/operators';
 import { makeMashShuffle, type MashConfig } from '../sim/mash';
 import { uniformReference, METRIC_NAMES, type MetricName } from '../sim/metrics';
-import { theoryMilestones } from '../sim/anchors';
+import { theoryMilestones, type AnchoredDeckSize } from '../sim/anchors';
 
-const N = 100;
 const K = 32;
 const T = 1000;
 const LF_SAMPLES = 50_000;
@@ -24,9 +23,6 @@ const METRIC_LABELS: Record<MetricName, string> = {
   maxLinearFunctionalZ: 'Max |z| of 5 linear functionals',
   sequentialGuesser: 'Sequential guesser',
 };
-
-const MILESTONES = theoryMilestones(100);
-const LOG2_FLOOR = 6; // ceil(log2((100+1)/2))
 
 mountNav('index.html');
 const app = document.getElementById('app')!;
@@ -46,8 +42,13 @@ const num = (k: string, d: number) => {
   return Number.isFinite(v) && params.has(k) ? v : d;
 };
 
+// deck size: 60 (standard) or 100 (commander); everything downstream —
+// uniform references, GSR baseline, theory milestones, log2 floor — is
+// parametric in n, with exact TV anchors baked in for both sizes
+let deckN: AnchoredDeckSize = num('n', 100) === 60 ? 60 : 100;
+
 const SLIDERS: SliderSpec[] = [
-  { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: 50, step: 1, value: num('split', 35) },
+  { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: Math.floor(deckN / 2), step: 1, value: num('split', Math.round(deckN * 0.35)) },
   { key: 'splitSd', label: 'Split variability ±', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
   { key: 'mu', label: 'Run length mu (1 = perfect interleaving)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
   { key: 'overhangMean', label: 'Overhang (cards above the mesh)', min: 1, max: 15, step: 1, value: num('overhang', 3) },
@@ -66,7 +67,7 @@ app.innerHTML = `
   .readout .item .muted { display: block; }
 </style>
 <div class="card">
-  <p style="margin-top:0">A mash shuffle of a ${N}-card sleeved deck: lift the
+  <p style="margin-top:0">A mash shuffle of an <span id="deckNLabel">${deckN}</span>-card sleeved deck: lift the
   BOTTOM packet, its first few cards (the overhang) become the new top, then
   interleave in runs (mu = mean run length; 1 = perfect interleaving) down
   into the rest — the big packet's remainder settles at the bottom, so cards
@@ -82,6 +83,12 @@ app.innerHTML = `
   randomness is the bottom-cut size and the overhang. Zero both variabilities
   and the shuffle is a fixed permutation — it cycles forever and never mixes
   (the faro lesson). Real hands wobble, and that wobble is what mixes.</p>
+  <label style="margin-top:10px">Deck size
+    <select id="deckSize">
+      <option value="60">60 (standard)</option>
+      <option value="100">100 (commander)</option>
+    </select>
+  </label>
   <div class="sliders" id="sliders"></div>
   <label style="margin-top:10px">Remnant block lands on
     <select id="remnant">
@@ -102,6 +109,18 @@ for (const s of SLIDERS) {
 }
 const remnantSel = document.getElementById('remnant') as HTMLSelectElement;
 remnantSel.value = params.get('remnant') === 'top' ? 'top' : 'bottom';
+const deckSel = document.getElementById('deckSize') as HTMLSelectElement;
+deckSel.value = String(deckN);
+deckSel.addEventListener('change', () => {
+  const oldN = deckN;
+  deckN = Number(deckSel.value) === 60 ? 60 : 100;
+  document.getElementById('deckNLabel')!.textContent = String(deckN);
+  // rescale the cut proportionally and re-clamp the slider range
+  const split = document.getElementById('sl-splitMean') as HTMLInputElement;
+  split.max = String(Math.floor(deckN / 2));
+  split.value = String(Math.max(5, Math.min(Math.floor(deckN / 2), Math.round((Number(split.value) * deckN) / oldN))));
+  schedule();
+});
 
 function currentConfig(): MashConfig {
   const get = (k: string) => Number((document.getElementById(`sl-${k}`) as HTMLInputElement).value);
@@ -116,15 +135,21 @@ function currentConfig(): MashConfig {
   };
 }
 
-let baseline: CurveResult | null = null;
+const baselines = new Map<number, CurveResult>();
 const disposers: (() => void)[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function resim(): void {
   const cfg = currentConfig();
-  baseline ??= metricCurves(gsr, { n: N, K, T, seed: SEED, lfSamples: LF_SAMPLES });
+  const milestones = theoryMilestones(deckN);
+  const log2Floor = Math.ceil(Math.log2((deckN + 1) / 2));
+  let baseline = baselines.get(deckN);
+  if (!baseline) {
+    baseline = metricCurves(gsr, { n: deckN, K, T, seed: SEED, lfSamples: LF_SAMPLES });
+    baselines.set(deckN, baseline);
+  }
   const result = metricCurves(makeMashShuffle(cfg), {
-    n: N,
+    n: deckN,
     K,
     T,
     seed: SEED + 1,
@@ -144,9 +169,9 @@ function resim(): void {
     ).join('') +
     `<span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
       <span class="muted">GSR certified (baseline)</span></span>
-     <span class="item"><strong>${MILESTONES.knee} / ${MILESTONES.fair}</strong>
-      <span class="muted">M_KNEE / M_FAIR (GSR theory)</span></span>
-     <span class="item"><strong>${LOG2_FLOOR}</strong><span class="muted">log₂ floor</span></span>`;
+     <span class="item"><strong>${milestones.knee} / ${milestones.fair}</strong>
+      <span class="muted">M_KNEE / M_FAIR (GSR theory, n=${deckN})</span></span>
+     <span class="item"><strong>${log2Floor}</strong><span class="muted">log₂ floor</span></span>`;
 
   // charts
   for (const d of disposers) d();
@@ -154,7 +179,7 @@ function resim(): void {
   const charts = document.getElementById('charts')!;
   const x = Array.from({ length: K }, (_, i) => i + 1);
   for (const m of METRIC_NAMES) {
-    const ref = uniformReference(N, m);
+    const ref = uniformReference(deckN, m);
     disposers.push(
       mountChart(charts, {
         title: METRIC_LABELS[m],
@@ -168,9 +193,9 @@ function resim(): void {
         band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
         refLine: ref.mean,
         vLines: [
-          { x: LOG2_FLOOR, label: 'floor' },
-          { x: MILESTONES.knee, label: 'M_KNEE' },
-          { x: MILESTONES.fair, label: 'M_FAIR' },
+          { x: log2Floor, label: 'floor' },
+          { x: milestones.knee, label: 'M_KNEE' },
+          { x: milestones.fair, label: 'M_FAIR' },
         ],
       }),
     );
@@ -178,6 +203,7 @@ function resim(): void {
 
   // keep the URL shareable
   const p = new URLSearchParams({
+    n: String(deckN),
     split: String(cfg.splitMean),
     splitSd: String(cfg.splitSd),
     mu: String(cfg.mu),
