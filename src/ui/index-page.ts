@@ -89,8 +89,20 @@ app.innerHTML = `
   interleave down into the rest — clump size is how many cards fall together
   from one side before the other side gets in (1 = perfect one-at-a-time
   alternation) — and the big packet's remainder settles at the bottom, so
-  cards cycle and nothing freezes. GSR (blue) is the classic riffle model for
-  comparison; gray band = uniform mean ± 2 SD. Mixedness is
+  cards cycle and nothing freezes. GSR (blue) is a <strong>fixed
+  baseline</strong> — the classic riffle model with its standard assumptions
+  (binomial half-cut, no overhang), computed once per deck size and unmoved
+  by the sliders. Orange is <strong>GSR with your hands</strong>: the same
+  cut, wobble and overhang the sliders describe, but GSR's drop rule instead
+  of the clump-size interleave — apples-to-apples against the green mash
+  curve, isolating what the interleave model itself contributes.
+  Read the <strong>first chart</strong>: it plots how far the worst metric
+  still is from uniform on a log scale, where each shuffle's halving is a
+  straight line and the certification margin is visible — on the raw
+  per-metric charts below, every curve reaches the gray ±2 SD band (single-deck
+  spread) within a few shuffles, but certification tests the trajectory
+  <em>mean</em> against a band 8× narrower than that, too thin to see at raw
+  scale. Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
   ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
@@ -174,6 +186,19 @@ function resim(): void {
     seed: SEED + 1,
     lfSamples: LF_SAMPLES,
   });
+  // Apples-to-apples riffle: identical cut + overhang params, GSR drop rule.
+  const gsrDyn = metricCurves(
+    makeMashShuffle({
+      splitMean: cfg.splitMean,
+      splitSd: cfg.splitSd,
+      mu: 1,
+      overhangMean: cfg.overhangMean,
+      overhangSd: cfg.overhangSd,
+      remnantEnd: cfg.remnantEnd,
+      interleave: 'gsr',
+    }),
+    { n: deckN, K, T, seed: SEED + 2, lfSamples: LF_SAMPLES },
+  );
 
   // readout
   const readout = document.getElementById('readout')!;
@@ -186,8 +211,10 @@ function resim(): void {
       (m) => `<span class="item"><strong>${fmtCert(result.cert.perMetric[m])}</strong>
         <span class="muted">${METRIC_LABELS[m]}</span></span>`,
     ).join('') +
-    `<span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
-      <span class="muted">GSR certified (baseline)</span></span>
+    `<span class="item"><strong>${fmtCert(gsrDyn.cert.overall)}</strong>
+      <span class="muted">GSR + your cut/overhang</span></span>
+     <span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
+      <span class="muted">GSR certified (fixed baseline)</span></span>
      <span class="item"><strong>${milestones.knee} / ${milestones.fair}</strong>
       <span class="muted">M_KNEE / M_FAIR (GSR theory, n=${deckN})</span></span>
      <span class="item"><strong>${log2Floor}</strong><span class="muted">log₂ floor</span></span>`;
@@ -197,17 +224,50 @@ function resim(): void {
   disposers.length = 0;
   const charts = document.getElementById('charts')!;
   const x = Array.from({ length: K }, (_, i) => i + 1);
+
+  // Headline chart: worst-metric standardized bias on a log scale — the
+  // quantity certification actually gates on. Exponential decay renders as
+  // a straight line; certification happens where a curve falls below the
+  // c=0.25 margin (plus CI width) and stays.
+  const worstEffect = (r: CurveResult): number[] =>
+    x.map((_, k) =>
+      Math.max(...METRIC_NAMES.map((m) => Math.abs(r.curves[m].effect[k]!))),
+    );
+  disposers.push(
+    mountChart(charts, {
+      title: 'Distance from random — worst metric (log scale)',
+      subtitle: `|trajectory mean − uniform| in single-deck SDs; dashes = certification margin c=0.25; gray = below measurement noise at T=${T}`,
+      x,
+      xLabel: 'shuffles',
+      logY: true,
+      height: 240,
+      series: [
+        { label: 'mash', colorVar: '--series-3', values: worstEffect(result) },
+        { label: 'GSR + your hands', colorVar: '--series-2', values: worstEffect(gsrDyn) },
+        { label: 'GSR (fixed)', colorVar: '--series-1', values: worstEffect(baseline) },
+      ],
+      refLine: 0.25,
+      band: { lo: 1e-6, hi: 1 / Math.sqrt(T) },
+      vLines: [
+        { x: log2Floor, label: 'floor' },
+        { x: milestones.knee, label: 'M_KNEE' },
+        { x: milestones.fair, label: 'M_FAIR' },
+      ],
+    }),
+  );
+
   for (const m of METRIC_NAMES) {
     const ref = uniformReference(deckN, m);
     disposers.push(
       mountChart(charts, {
         title: METRIC_LABELS[m],
-        subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
+        subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR+hands ${fmtCert(gsrDyn.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
         x,
         xLabel: 'shuffles',
         series: [
           { label: 'mash', colorVar: '--series-3', values: Array.from(result.curves[m].mean) },
-          { label: 'GSR', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean) },
+          { label: 'GSR + your hands', colorVar: '--series-2', values: Array.from(gsrDyn.curves[m].mean) },
+          { label: 'GSR (fixed)', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean) },
         ],
         band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
         refLine: ref.mean,
