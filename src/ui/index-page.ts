@@ -51,6 +51,12 @@ let deckN: AnchoredDeckSize = nParam === 40 ? 40 : nParam === 60 ? 60 : 100;
 // A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
 // (the /data "simulate" links). While active it replaces the geometric(mu)
 // model; touching the mu slider reverts to geometric.
+// max cut: past half is easy to grab on small decks (23 of 40, 35 of 60);
+// commander is physically capped around half
+function maxCut(n: number): number {
+  return n === 100 ? 50 : Math.round(n * 0.575);
+}
+
 let runDist: number[] | null = (() => {
   const rd = params.get('rd');
   if (!rd) return null;
@@ -59,7 +65,7 @@ let runDist: number[] | null = (() => {
 })();
 
 const SLIDERS: SliderSpec[] = [
-  { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: Math.floor(deckN / 2), step: 1, value: num('split', Math.round(deckN * 0.35)) },
+  { key: 'splitMean', label: 'Bottom-cut size (lifted packet)', min: 5, max: maxCut(deckN), step: 1, value: num('split', Math.round(deckN * 0.35)) },
   { key: 'splitSd', label: 'Cut wobble (SD, fresh draw each shuffle)', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
   { key: 'mu', label: 'Interleave clump size (1 = perfect, 2 = pairs…)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
   { key: 'overhangMean', label: 'Overhang (− = big packet leads)', min: -10, max: 15, step: 1, value: num('overhang', 3) },
@@ -129,8 +135,8 @@ deckSel.addEventListener('change', () => {
   document.getElementById('deckNLabel')!.textContent = String(deckN);
   // rescale the cut proportionally and re-clamp the slider range
   const split = document.getElementById('sl-splitMean') as HTMLInputElement;
-  split.max = String(Math.floor(deckN / 2));
-  split.value = String(Math.max(5, Math.min(Math.floor(deckN / 2), Math.round((Number(split.value) * deckN) / oldN))));
+  split.max = String(maxCut(deckN));
+  split.value = String(Math.max(5, Math.min(maxCut(deckN), Math.round((Number(split.value) * deckN) / oldN))));
   schedule();
 });
 
