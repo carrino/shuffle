@@ -1,10 +1,10 @@
 // Config-grid sweep: which mash habits mix a 100-card deck, and how fast?
 // Pure computation — runs inside the sweep Web Worker; the UI only renders.
 
-import { metricCurves, type CurveResult } from './experiment';
+import { metricCurves, certK, type CurveResult, type CertificationResult } from './experiment';
 import { gsr } from './operators';
 import { makeMashShuffle, type MashConfig } from './mash';
-import { METRIC_NAMES, type MetricName } from './metrics';
+import { METRIC_NAMES } from './metrics';
 
 export interface SweepOptions {
   n: number;
@@ -57,8 +57,9 @@ export interface SweepRow {
   splitLabel: string;
   offsetLabel: string;
   config: MashConfig;
-  mixedAt: Record<MetricName, number>;
-  /** worst metric's k (Infinity = never within K) */
+  /** TOST certification — per-metric statuses plus the named binding metric */
+  cert: CertificationResult;
+  /** overall certified k for sorting (Infinity when not certified) */
   shufflesToMix: number;
   curves: CurveResult['curves'];
 }
@@ -125,7 +126,7 @@ export function runSweep(
       splitLabel: splitChoice.label,
       offsetLabel: offsetChoice.label,
       config,
-      mixedAt: result.mixedAt,
+      cert: result.cert,
       shufflesToMix: result.shufflesToMix,
       curves: result.curves,
     };
@@ -150,8 +151,9 @@ export function sweepToCsv(result: SweepResult): string {
     'mu',
     'offsetMean',
     'offsetSd',
-    ...METRIC_NAMES.map((m) => `mixedAt_${m}`),
-    'shufflesToMix_worst',
+    ...METRIC_NAMES.map((m) => `certifiedAt_${m}`),
+    'certifiedMixed_worst',
+    'bindingMetric',
   ];
   const lines = [header.join(',')];
   for (const row of result.rows) {
@@ -162,14 +164,15 @@ export function sweepToCsv(result: SweepResult): string {
         row.config.mu,
         row.config.offsetMean,
         row.config.offsetSd,
-        ...METRIC_NAMES.map((m) => fmtK(row.mixedAt[m])),
-        fmtK(row.shufflesToMix),
+        ...METRIC_NAMES.map((m) => fmtCertCsv(row.cert.perMetric[m])),
+        fmtCertCsv(row.cert.overall),
+        row.cert.bindingMetric ?? '',
       ].join(','),
     );
   }
   return lines.join('\n') + '\n';
 }
 
-function fmtK(k: number): string {
-  return Number.isFinite(k) ? String(k) : 'never';
+function fmtCertCsv(s: { status: string; k?: number }): string {
+  return s.status === 'certified' ? String(s.k) : s.status;
 }

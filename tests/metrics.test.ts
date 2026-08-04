@@ -7,7 +7,12 @@ import {
   linearFunctionalRef,
   randomLinearFunctionals,
   uniformReference,
+  topCardHome,
+  topCardHomeGSRTheory,
+  sequentialGuesser,
+  makeGuesserScratch,
 } from '../src/sim/metrics';
+import { makePRNG, fisherYates, makeDeck } from '../src/sim/prng';
 
 function deckOf(...vals: number[]): Int16Array {
   return Int16Array.from(vals);
@@ -86,6 +91,75 @@ describe('randomLinearFunctionals', () => {
   });
 });
 
+describe('topCardHome (hand-checked)', () => {
+  it('is the indicator of the original top card being on top', () => {
+    expect(topCardHome(deckOf(0, 1, 2, 3))).toBe(1);
+    expect(topCardHome(deckOf(1, 0, 2, 3))).toBe(0);
+    expect(topCardHome(deckOf(3, 2, 1, 0))).toBe(0);
+  });
+
+  it('GSR theory curve is (1 + lambda/2)/n, capped at 1', () => {
+    expect(topCardHomeGSRTheory(100, 10)).toBeCloseTo((1 + 100 / 2 ** 11) / 100, 12);
+    expect(topCardHomeGSRTheory(100, 0)).toBeCloseTo(0.51, 12); // lambda = 100
+    expect(topCardHomeGSRTheory(2, 0)).toBe(1); // cap binds for tiny decks
+    // converges to 1/n
+    expect(topCardHomeGSRTheory(100, 30)).toBeCloseTo(0.01, 6);
+  });
+});
+
+describe('sequentialGuesser (hand-checked)', () => {
+  const scratch = makeGuesserScratch(8);
+  it('gets everything right on a sorted deck', () => {
+    // first guess: no threads -> smallest unrevealed = 0, correct; then the
+    // run-following rule guesses v+1 forever
+    expect(sequentialGuesser(deckOf(0, 1, 2, 3, 4, 5, 6, 7), scratch)).toBe(8);
+  });
+
+  it('scores [2,0,1]: miss, then rides from 0', () => {
+    // guess 0 (smallest unrevealed) vs 2 -> miss; guess 0? no: 2 revealed,
+    // successor 3 = out of deck-range threads? thread {2} tail 2 with 3
+    // unrevealed BUT deck n=3 -> tail invalid; guess smallest unrevealed 0
+    // vs 0 -> hit; then ride: guess 1 vs 1 -> hit. total 2.
+    expect(sequentialGuesser(deckOf(2, 0, 1), makeGuesserScratch(3))).toBe(2);
+  });
+
+  it('is deterministic on a perfect interleave (deviation from H_n either way is the signal)', () => {
+    // deck [0,4,1,5,2,6,3,7]: hit 0; then the run-riding rule guesses v+1
+    // which strict alternation defeats every time until the final card
+    // (guess 7, hit). Exactly 2 — BELOW the uniform H_8 ≈ 2.72: clumpy decks
+    // push the guesser above H_n, strict alternation below it, and the
+    // certification band is two-sided, so both register as structure.
+    const score = sequentialGuesser(deckOf(0, 4, 1, 5, 2, 6, 3, 7), makeGuesserScratch(8));
+    expect(score).toBe(2);
+  });
+
+  it('matches H_n exactly in expectation on uniform decks (any strategy)', () => {
+    const n = 30;
+    const ref = uniformReference(n, 'sequentialGuesser');
+    let hn = 0;
+    for (let k = 1; k <= n; k++) hn += 1 / k;
+    expect(ref.mean).toBeCloseTo(hn, 12);
+    const rng = makePRNG(2718);
+    const deck = makeDeck(n);
+    const s = makeGuesserScratch(n);
+    const T = 40_000;
+    let sum = 0;
+    let sumsq = 0;
+    for (let t = 0; t < T; t++) {
+      fisherYates(deck, rng);
+      const v = sequentialGuesser(deck, s);
+      sum += v;
+      sumsq += v * v;
+    }
+    const mean = sum / T;
+    const sd = Math.sqrt(sumsq / T - mean * mean);
+    // SE of mean = ref.sd / sqrt(T); 4-sigma
+    expect(Math.abs(mean - ref.mean)).toBeLessThan(4 * (ref.sd / Math.sqrt(T)));
+    // exact SD from independent Bernoulli(1/k) steps
+    expect(Math.abs(sd / ref.sd - 1)).toBeLessThan(0.03);
+  });
+});
+
 describe('uniformReference', () => {
   it('documents the n=100 references from the spec', () => {
     expect(uniformReference(100, 'risingSequences').mean).toBeCloseTo(50.5, 12);
@@ -93,5 +167,8 @@ describe('uniformReference', () => {
     expect(uniformReference(100, 'adjacentPairDisplacement').mean).toBeCloseTo(101 / 3, 12);
     expect(uniformReference(100, 'spearmanToStart').mean).toBe(0);
     expect(uniformReference(100, 'spearmanToStart').sd).toBeCloseTo(1 / Math.sqrt(99), 12);
+    expect(uniformReference(100, 'topCardHome').mean).toBeCloseTo(0.01, 12);
+    expect(uniformReference(100, 'topCardHome').sd).toBeCloseTo(Math.sqrt(0.01 * 0.99), 12);
+    expect(uniformReference(100, 'sequentialGuesser').mean).toBeCloseTo(5.187377517639621, 9);
   });
 });

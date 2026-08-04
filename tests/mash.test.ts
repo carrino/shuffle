@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { makePRNG, makeDeck, resetSorted } from '../src/sim/prng';
 import { faro, gsr } from '../src/sim/operators';
 import { mash, makeMashShuffle, type MashConfig } from '../src/sim/mash';
-import { metricCurves } from '../src/sim/experiment';
+import { metricCurves, certK } from '../src/sim/experiment';
 import { uniformReference, METRIC_NAMES } from '../src/sim/metrics';
 
 const base: MashConfig = {
@@ -173,13 +173,14 @@ describe('mash — GSR-like limit (mu=2, binomial-like split)', () => {
         const tol = k >= 12 ? 0.25 : k >= 7 ? 1.0 : 2.0;
         expect(diff, `${metric} at k=${k}: |Δ|=${diff.toFixed(2)} > ${tol}`).toBeLessThanOrEqual(tol);
       }
-      // and it does actually mix — a few shuffles behind GSR at most (mash's
-      // fixed-mu symmetric alternation lacks GSR's self-balancing drops)
-      const gm = g.mixedAt[metric];
-      const mm = m.mixedAt[metric];
-      expect(Number.isFinite(mm), `${metric} never mixed`).toBe(true);
-      expect(mm - gm, `${metric} mixedAt ${mm} vs gsr ${gm}`).toBeLessThanOrEqual(6);
-      expect(gm - mm, `${metric} mixedAt ${mm} vs gsr ${gm}`).toBeLessThanOrEqual(3);
+      // and it does actually certify — a few shuffles behind GSR at most
+      // (mash's fixed-mu symmetric alternation lacks GSR's self-balancing
+      // proportional drops)
+      const gm = certK(g.cert.perMetric[metric]);
+      const mm = certK(m.cert.perMetric[metric]);
+      expect(Number.isFinite(mm), `${metric} never certified`).toBe(true);
+      expect(mm - gm, `${metric} certified ${mm} vs gsr ${gm}`).toBeLessThanOrEqual(6);
+      expect(gm - mm, `${metric} certified ${mm} vs gsr ${gm}`).toBeLessThanOrEqual(3);
     }
   });
 });

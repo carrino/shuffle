@@ -86,9 +86,10 @@ const COLS: { key: string; label: string; value: (r: SweepRow) => number | strin
   ...METRIC_NAMES.map((m) => ({
     key: `m_${m}`,
     label: shortMetric(m),
-    value: (r: SweepRow) => r.mixedAt[m],
+    value: (r: SweepRow) => certCell(r.cert.perMetric[m]),
   })),
-  { key: 'shufflesToMix', label: 'worst', value: (r) => r.shufflesToMix },
+  { key: 'shufflesToMix', label: 'certified', value: (r) => certCell(r.cert.overall) },
+  { key: 'binding', label: 'binding', value: (r) => (r.cert.bindingMetric ? shortMetric(r.cert.bindingMetric) : '') },
 ];
 
 function shortMetric(m: MetricName): string {
@@ -97,30 +98,44 @@ function shortMetric(m: MetricName): string {
     adjacentPairDisplacement: 'adjΔ',
     spearmanToStart: 'spearman',
     maxLinearFunctionalZ: 'lin.func',
+    topCardHome: 'topcard',
+    sequentialGuesser: 'guesser',
   }[m];
+}
+
+// numbers sort numerically; statuses sort after any number
+function certCell(s: { status: string; k?: number }): number | string {
+  return s.status === 'certified' ? s.k! : s.status === 'not-certified' ? 'never' : 'cannot certify';
 }
 
 function renderTable(): void {
   if (!result) return;
+  // cert columns mix numbers and statuses: numbers sort first, then
+  // 'never', then 'cannot certify'
+  const rank = (v: number | string): number =>
+    typeof v === 'number' ? v : v === 'never' ? 1e9 : 1e9 + 1;
   const rows = [...result.rows].sort((a, b) => {
     const col = COLS.find((c) => c.key === sortKey)!;
     const va = col.value(a);
     const vb = col.value(b);
     const cmp =
-      typeof va === 'number' && typeof vb === 'number'
-        ? (Number.isFinite(va) ? va : 1e9) - (Number.isFinite(vb) ? vb : 1e9)
+      typeof va === 'number' || typeof vb === 'number'
+        ? rank(va) - rank(vb)
         : String(va).localeCompare(String(vb));
     return cmp * sortDir || a.index - b.index;
   });
 
-  const gsrWorst = result.baseline.shufflesToMix;
   resultsEl.innerHTML = `
     <div class="card">
     <p style="margin-top:0">GSR baseline (n=${result.options.n}, T=${result.options.T}):
-    per-metric mixed at ${METRIC_NAMES.map((m) => `${shortMetric(m)} <strong>${fmtK(result!.baseline.mixedAt[m])}</strong>`).join(', ')}
-    — worst <strong>${fmtK(gsrWorst)}</strong>. Log₂ floor: <strong>${result.log2Floor}</strong>.
-    "mixed at k" = trajectory-mean z enters |z|&lt;2 and stays (T-dependent);
-    <em>never</em> = not within K=${result.options.K}. Click a row for curves.</p>
+    per-metric certified at ${METRIC_NAMES.map((m) => `${shortMetric(m)} <strong>${fmtCell(certCell(result!.baseline.cert.perMetric[m]))}</strong>`).join(', ')}
+    — overall <strong>${fmtCell(certCell(result.baseline.cert.overall))}</strong>
+    (binding ${result.baseline.cert.bindingMetric ?? '—'}).
+    Log₂ floor: <strong>${result.log2Floor}</strong>.
+    "certified at k" = every later k keeps the ${'95'}% CI of the trajectory
+    mean inside ref ± 0.25·SD<sub>uniform</sub> (TOST equivalence — see
+    /validate for the full definition); <em>never</em> = not within
+    K=${result.options.K}. Click a row for curves.</p>
     <div style="overflow-x:auto"><table class="data"><thead><tr>
       ${COLS.map((c) => `<th data-key="${c.key}">${c.label}${c.key === sortKey ? (sortDir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
     </tr></thead><tbody>
@@ -159,7 +174,8 @@ function renderDetail(): void {
   for (const d of detailDisposers) d();
   detailDisposers.length = 0;
   detailEl.innerHTML = `<h2>split ${row.splitLabel} · mu ${row.config.mu} · offset ${row.offsetLabel}
-    <span class="muted">worst metric mixes at ${fmtK(row.shufflesToMix)} (GSR: ${fmtK(result.baseline.shufflesToMix)}; floor ${result.log2Floor})</span></h2>`;
+    <span class="muted">certified ${fmtCell(certCell(row.cert.overall))}, binding ${row.cert.bindingMetric ?? '—'}
+    (GSR: ${fmtCell(certCell(result.baseline.cert.overall))}; floor ${result.log2Floor})</span></h2>`;
   const grid = document.createElement('div');
   grid.className = 'chart-grid';
   detailEl.appendChild(grid);
@@ -169,7 +185,7 @@ function renderDetail(): void {
     const ref = uniformReference(result.options.n, m);
     detailDisposers.push(
       mountChart(grid, {
-        title: `${shortMetric(m)} — mixed at ${fmtK(row.mixedAt[m])}`,
+        title: `${shortMetric(m)} — ${fmtCell(certCell(row.cert.perMetric[m]))}`,
         subtitle: `uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}; log₂ floor at k=${result.log2Floor}`,
         x,
         xLabel: 'shuffles',
@@ -185,9 +201,6 @@ function renderDetail(): void {
   detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function fmtK(k: number): string {
-  return Number.isFinite(k) ? String(k) : 'never';
-}
 function fmtCell(v: number | string): string {
   return typeof v === 'number' ? (Number.isFinite(v) ? String(v) : 'never') : v;
 }

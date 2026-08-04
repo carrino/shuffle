@@ -11,16 +11,27 @@ describe('sweep', () => {
 
   const result = runSweep(tiny);
 
-  it('produces one row per config with per-metric ks and worst', () => {
+  it('produces one row per config with per-metric certification and a named binding metric', () => {
     expect(result.rows.length).toBe(48);
     for (const row of result.rows) {
-      for (const m of METRIC_NAMES) {
-        const k = row.mixedAt[m];
-        expect(k === Infinity || (k >= 1 && k <= tiny.K)).toBe(true);
+      const ks = METRIC_NAMES.map((m) => {
+        const s = row.cert.perMetric[m];
+        if (s.status === 'certified') {
+          expect(s.k).toBeGreaterThanOrEqual(1);
+          expect(s.k).toBeLessThanOrEqual(tiny.K);
+          return s.k;
+        }
+        return Infinity;
+      });
+      if (ks.every(Number.isFinite)) {
+        expect(row.cert.overall.status).toBe('certified');
+        expect(row.shufflesToMix).toBe(Math.max(...ks));
+      } else {
+        expect(row.cert.overall.status).not.toBe('certified');
+        expect(row.shufflesToMix).toBe(Infinity);
       }
-      const finite = METRIC_NAMES.map((m) => row.mixedAt[m]).filter(Number.isFinite);
-      const expected = finite.length === METRIC_NAMES.length ? Math.max(...finite) : Infinity;
-      expect(row.shufflesToMix).toBe(expected);
+      expect(row.cert.bindingMetric).not.toBeNull();
+      expect(METRIC_NAMES).toContain(row.cert.bindingMetric!);
     }
   });
 
@@ -65,7 +76,8 @@ describe('sweep', () => {
     const csv = sweepToCsv(result);
     const lines = csv.trim().split('\n');
     expect(lines.length).toBe(49);
-    for (const m of METRIC_NAMES) expect(lines[0]).toContain(`mixedAt_${m}`);
-    expect(lines[0]).toContain('shufflesToMix_worst');
+    for (const m of METRIC_NAMES) expect(lines[0]).toContain(`certifiedAt_${m}`);
+    expect(lines[0]).toContain('certifiedMixed_worst');
+    expect(lines[0]).toContain('bindingMetric');
   });
 });

@@ -19,14 +19,13 @@ const METRIC_LABELS: Record<MetricName, string> = {
   adjacentPairDisplacement: 'Adjacent-pair displacement',
   spearmanToStart: 'Spearman ρ vs start',
   maxLinearFunctionalZ: 'Max |z| of 5 linear functionals',
+  topCardHome: 'P(top card at home)',
+  sequentialGuesser: 'Sequential guesser (correct guesses)',
 };
 
 // The report may arrive as live objects (worker) or JSON (CI file):
-// Float64Array→number[], Infinity→'never'. Normalize the differences away.
+// Float64Array→number[]. Certification statuses are plain JSON either way.
 type Loose = ValidationReport;
-function num(v: number | string): number {
-  return typeof v === 'string' ? Infinity : v;
-}
 
 mountNav('validate.html');
 
@@ -99,12 +98,32 @@ function render(report: Loose): void {
   <code>0x${report.options.seed.toString(16)}</code>.
   Rising-sequence floor: no riffle-family shuffle of 100 cards can be uniform
   before ⌈log₂((n+1)/2)⌉ = <strong>${report.log2Floor.n100}</strong> shuffles
-  (${report.log2Floor.n52} for 52).</p>`;
+  (${report.log2Floor.n52} for 52).</p>
+  <h3>The mixedness definition</h3>
+  <p><strong>Theory layer</strong> (pure GSR): M(ε) = first m with exact
+  TV(m) ≤ ε. For n=100: M_KNEE (ε=0.5) = <strong>${report.milestones.n100.knee}</strong>,
+  M_FAIR (ε=0.05) = <strong>${report.milestones.n100.fair}</strong>,
+  M_STRICT (ε=0.01) = <strong>${report.milestones.n100.strict}</strong>
+  (52 cards: ${report.milestones.n52.knee} / ${report.milestones.n52.fair} /
+  ${report.milestones.n52.strict} — M_KNEE is the classic "7 shuffles").
+  TV ≤ ε means no single pre-specified event's probability shifts by more
+  than ε from uniform; the bound is additive (small-probability bets can
+  move a lot in relative terms) and per-event (cumulative edge over a whole
+  sequential deal is bounded only by n·ε — hence the sequential-guesser
+  metric).</p>
+  <p><strong>Empirical layer</strong> (any operator): certifiedMixed(c, α) —
+  equivalence testing, never fail-to-reject. The first shuffle k where
+  EVERY metric's ${(100 * (1 - 0.05)).toFixed(0)}% CI of the trajectory mean
+  fits inside ref ± c·SD<sub>uniform</sub> and stays inside for all later k
+  (c=0.25, α=0.05). If the CI half-width cannot beat c·SD at this T, the
+  outcome is "cannot-certify" — explicitly distinct from "not mixed".
+  Check (f) below is the calibration invariant tying the layers together.</p>`;
   reportRoot.appendChild(head);
 
   for (const check of report.checks) renderCheck(check);
 
   renderAnchorChart(report);
+  renderTopCardChart(report);
   renderCurves(report, 100);
   renderCurves(report, 52);
 }
@@ -134,10 +153,9 @@ function renderCurves(report: Loose, n: 52 | 100): void {
   const x = Array.from({ length: K }, (_, i) => i + 1);
   for (const m of METRIC_NAMES) {
     const ref = uniformReference(n, m);
-    const mixed = num(result.mixedAt[m] as unknown as number | string);
     mountChart(grid, {
       title: METRIC_LABELS[m],
-      subtitle: `mixed at ${Number.isFinite(mixed) ? mixed : 'never'} (T=${result.T}) · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
+      subtitle: `${fmtCert(result.cert.perMetric[m])} (T=${result.T}) · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
       x,
       xLabel: 'shuffles',
       series: [
@@ -148,6 +166,48 @@ function renderCurves(report: Loose, n: 52 | 100): void {
       refLine: ref.mean,
     });
   }
+}
+
+function renderTopCardChart(report: Loose): void {
+  const section = document.createElement('section');
+  section.innerHTML = `<h2>Top-card excess overlay (late-stage sensitivity)</h2>
+    <p class="muted">P(original top card back on top) for GSR vs the known
+    asymptotic (1 + λ/2)/n with λ = n/2^m. This bias outlives the
+    rising-sequence saturation point, which is why topCardHome is in the
+    certification battery. Log scale.</p>`;
+  const grid = document.createElement('div');
+  grid.className = 'chart-grid';
+  section.appendChild(grid);
+  reportRoot.appendChild(section);
+
+  for (const n of [100, 52] as const) {
+    const result = n === 52 ? report.gsr52 : report.gsr100;
+    const theory = n === 52 ? report.topCardTheory.n52 : report.topCardTheory.n100;
+    const K = result.K;
+    const x = Array.from({ length: K }, (_, i) => i + 1);
+    mountChart(grid, {
+      title: `P(top card at home), n=${n}`,
+      subtitle: 'measured (points) vs (1+λ/2)/n (line); dashed = uniform 1/n',
+      x,
+      xLabel: 'riffles',
+      logY: true,
+      series: [
+        { label: 'theory', colorVar: '--series-1', values: theory },
+        {
+          label: 'measured',
+          colorVar: '--series-2',
+          values: clampLen(result.curves.topCardHome.mean, K),
+          points: true,
+          width: 0.5,
+        },
+      ],
+      refLine: 1 / n,
+    });
+  }
+}
+
+function fmtCert(s: { status: string; k?: number }): string {
+  return s.status === 'certified' ? `certified at ${s.k}` : s.status;
 }
 
 function renderAnchorChart(report: Loose): void {

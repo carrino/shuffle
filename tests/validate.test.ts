@@ -23,6 +23,7 @@ describe(`phase 1 validation gate (${process.env.FULL_VALIDATION ? 'full' : 'fas
     'd-gsr-convergence-52',
     'd-gsr-convergence-100',
     'e-log2-floor',
+    'f-calibration',
   ]) {
     it(`check ${id} passes`, () => {
       const check = report.checks.find((c) => c.id === id);

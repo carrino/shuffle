@@ -5,14 +5,15 @@
 import './theme.css';
 import { mountNav } from './nav';
 import { mountChart } from './charts';
-import { metricCurves, type CurveResult } from '../sim/experiment';
+import { metricCurves, type CurveResult, type CertStatus } from '../sim/experiment';
 import { gsr } from '../sim/operators';
 import { makeMashShuffle, type MashConfig } from '../sim/mash';
 import { uniformReference, METRIC_NAMES, type MetricName } from '../sim/metrics';
+import { theoryMilestones } from '../sim/anchors';
 
 const N = 100;
-const K = 40;
-const T = 500;
+const K = 32;
+const T = 1000;
 const LF_SAMPLES = 50_000;
 const SEED = 0x0e4c1a2e;
 
@@ -21,7 +22,12 @@ const METRIC_LABELS: Record<MetricName, string> = {
   adjacentPairDisplacement: 'Adjacent-pair displacement',
   spearmanToStart: 'Spearman ρ vs start',
   maxLinearFunctionalZ: 'Max |z| of 5 linear functionals',
+  topCardHome: 'P(top card at home)',
+  sequentialGuesser: 'Sequential guesser',
 };
+
+const MILESTONES = theoryMilestones(100);
+const LOG2_FLOOR = 6; // ceil(log2((100+1)/2))
 
 mountNav('index.html');
 const app = document.getElementById('app')!;
@@ -64,9 +70,13 @@ app.innerHTML = `
   <p style="margin-top:0">A mash shuffle of a ${N}-card sleeved deck: cut off a
   small packet, interleave in runs (mu = mean run length), the big packet's
   remainder drops as an ordered block. GSR (blue) is the classic riffle model
-  for comparison; gray band = uniform mean ± 2 SD. T=${T} trajectories per
-  re-sim, so "mixed" means the residual bias of ${T} decks is statistically
-  undetectable (|z| &lt; 2, staying in band).</p>
+  for comparison; gray band = uniform mean ± 2 SD. Mixedness is
+  <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
+  the first shuffle where every metric's 95% CI fits inside
+  ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
+  <a href="validate.html">/validate</a> for the full definition and the
+  calibration against the exact GSR theory anchors M_KNEE/M_FAIR, drawn as
+  vertical lines on every chart with the log₂ floor).</p>
   <p><strong>Try zeroing the cut offset with a 30-card split:</strong> the
   interleave only ever reaches ~2× the split depth, so the bottom of the deck
   is <em>frozen</em> — a habitual no-cut 30/70 mash never mixes, no matter how
@@ -123,15 +133,19 @@ function resim(): void {
   // readout
   const readout = document.getElementById('readout')!;
   readout.innerHTML =
-    `<span class="item"><span class="big">${fmtK(result.shufflesToMix)}</span>
-      <span class="muted">shuffles to mix (worst metric)</span></span>` +
+    `<span class="item"><span class="big">${fmtCert(result.cert.overall)}</span>
+      <span class="muted">certifiedMixed (c=0.25, α=0.05) — binding: ${
+        result.cert.bindingMetric ? METRIC_LABELS[result.cert.bindingMetric] : '—'
+      }</span></span>` +
     METRIC_NAMES.map(
-      (m) => `<span class="item"><strong>${fmtK(result.mixedAt[m])}</strong>
+      (m) => `<span class="item"><strong>${fmtCert(result.cert.perMetric[m])}</strong>
         <span class="muted">${METRIC_LABELS[m]}</span></span>`,
     ).join('') +
-    `<span class="item"><strong>${fmtK(baseline.shufflesToMix)}</strong>
-      <span class="muted">GSR worst (baseline)</span></span>
-     <span class="item"><strong>6</strong><span class="muted">log₂ floor</span></span>`;
+    `<span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
+      <span class="muted">GSR certified (baseline)</span></span>
+     <span class="item"><strong>${MILESTONES.knee} / ${MILESTONES.fair}</strong>
+      <span class="muted">M_KNEE / M_FAIR (GSR theory)</span></span>
+     <span class="item"><strong>${LOG2_FLOOR}</strong><span class="muted">log₂ floor</span></span>`;
 
   // charts
   for (const d of disposers) d();
@@ -143,7 +157,7 @@ function resim(): void {
     disposers.push(
       mountChart(charts, {
         title: METRIC_LABELS[m],
-        subtitle: `mash mixed at ${fmtK(result.mixedAt[m])} · GSR at ${fmtK(baseline.mixedAt[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
+        subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
         x,
         xLabel: 'shuffles',
         series: [
@@ -152,6 +166,11 @@ function resim(): void {
         ],
         band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
         refLine: ref.mean,
+        vLines: [
+          { x: LOG2_FLOOR, label: 'floor' },
+          { x: MILESTONES.knee, label: 'M_KNEE' },
+          { x: MILESTONES.fair, label: 'M_FAIR' },
+        ],
       }),
     );
   }
@@ -184,8 +203,8 @@ for (const s of SLIDERS) {
 }
 remnantSel.addEventListener('change', schedule);
 
-function fmtK(k: number): string {
-  return Number.isFinite(k) ? String(k) : 'never';
+function fmtCert(s: CertStatus): string {
+  return s.status === 'certified' ? String(s.k) : s.status === 'not-certified' ? 'never' : 'cannot certify';
 }
 
 resim();

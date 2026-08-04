@@ -45,20 +45,21 @@ collector.
 
 ### Early findings from the model (before real data)
 
-At the T=500-trajectory statistical criterion on n=100 (GSR baseline ≈ 13):
+Under `certifiedMixed(c=0.25, α=0.05)` at T=1000, n=100 (GSR certifies at
+~11–12, consistent with M_FAIR = 12):
 
 - **A habitual no-cut 30/70 mash never mixes.** The interleave zone only
   reaches ~2× the split depth, so the bottom ~40 cards are frozen forever.
   The cut-offset habit (or a bigger split) is what rescues it: 30/70 with a
-  10±6 cut mixes around ~18–19.
+  10±6 cut certifies around ~17.
 - **With realistic split variance, cleaner interleaving mixes *faster*, not
   slower.** A ±3-card split wobble breaks the perfect-interleave degeneracy,
   while clumpy runs (mu ≈ 3) preserve ordered blocks — rising-sequence bias
   is monotone *increasing* in mu at every split in the sweep grid. The
   non-mixing faro pathology needs an exactly equal, zero-variance split.
-- **An equal-ish sleeved mash (50±3, mu ≈ 1.3) mixes in ~13 shuffles**,
-  on par with GSR — the remnant block, not interleave cleanliness, is the
-  main enemy for lopsided splits.
+- **An equal-ish sleeved mash (50±3, mu ≈ 1.3) certifies in ~9–10 shuffles**,
+  slightly ahead of GSR — the remnant block, not interleave cleanliness, is
+  the main enemy for lopsided splits.
 
 These are model results; the /data page's fitted per-collector configs are
 the ground truth to re-run against.
@@ -71,17 +72,54 @@ the ground truth to re-run against.
 | Adjacent-pair displacement | mean (n+1)/3 ≈ 33.67 (SD MC-calibrated ≈ 2.11) | mean over v of \|pos(v+1) − pos(v)\| |
 | Spearman ρ vs start | mean 0, SD 1/√(n−1) ≈ 0.1005 | rank correlation with the starting order |
 | Random linear functionals | max\|z\| of 5, mean ≈ 1.57, SD ≈ 0.556 | 5 fixed seeded weight vectors · position-of-value; z vs 10⁵-permutation MC reference |
+| P(top card at home) | mean 1/n = 0.01, SD √(p(1−p)) ≈ 0.0995 (exact) | GSR excess ≈ λ/2 relative with λ = n/2^m (overlaid on /validate); stays biased after rising sequences saturate — the late-stage-sensitive check |
+| Sequential guesser | mean H_n ≈ 5.19, SD √Σ(1/k)(1−1/k) ≈ 1.88 (exact) | expected correct guesses, full memory, rising-sequence-tracking guesser; under uniform ANY strategy scores H_n in expectation (per-step P = 1/k independent of history) — the "exploitable during play" metric |
 
 Adjacency *retention* is deliberately not a headline metric: a clean
 interleave separates all neighbors in one pass and would look "random" while
 being perfectly structured.
 
-**"Mixed at k"** per metric = the trajectory-mean z-distance from uniform
-enters \|z\| &lt; 2 and stays in band; `shufflesToMix` is the **worst**
-metric's k, always reported alongside the per-metric values, never as a lone
-scalar. Note the z-of-mean scales with √T: more trajectories detect smaller
-residual bias and push mixed-at later. The validation gate turns this into a
-feature (see below).
+## What "mixed" means (two layers + a calibration invariant)
+
+**(1) Theory layer** (pure GSR only): `M(ε)` = first m with the *exact*
+Bayer–Diaconis TV(m) ≤ ε, read from the baked anchors:
+
+|  | ε | n=52 | n=100 |
+|---|---|---|---|
+| `M_KNEE` | 0.5 | 7 (the classic "seven shuffles") | 8 |
+| `M_FAIR` | 0.05 (default target) | 10 | 12 |
+| `M_STRICT` | 0.01 | 13 | 14 |
+
+Operationally, TV ≤ ε means **no single pre-specified event's probability
+shifts by more than ε from uniform**. Two caveats: the bound is *additive*
+(a small-probability bet can still move a lot in relative terms), and it is
+*per-event* — the cumulative edge across a whole sequential deal is bounded
+only by n·ε, which is exactly why the sequential-guesser metric exists.
+
+**(2) Empirical layer** (any operator): `certifiedMixed(c, α)` — equivalence
+testing (TOST-style), never fail-to-reject. The first shuffle k such that
+for **every** certification metric the (1−α) confidence interval of the
+trajectory mean lies entirely inside `[ref − c·SD_uniform, ref + c·SD_uniform]`
+and remains inside for all later simulated k. Defaults c = 0.25, α = 0.05.
+Rationale: fail-to-reject certifies *sooner* with *less* data, which is
+backwards; with equivalence bands more data certifies more honestly, and as
+T→∞ the criterion converges to \|bias\| &lt; c·SD without ever weakening.
+If the CI half-width cannot beat c·SD at the chosen T, the outcome is
+**"cannot certify at this T"** — explicitly distinct from "not mixed"
+(T of a few hundred minimum; the app uses T ≥ 800 everywhere). Per-metric
+certification shuffle counts are always reported with the **binding (worst)
+metric named** — never a lone scalar.
+
+**(3) Calibration invariant** (CI-gated test): `certifiedMixed` run on pure
+GSR must land within ±1 shuffle of `M_FAIR` for both n=52 and n=100. If it
+certifies earlier, the metric battery is blind to late-stage structure —
+the build fails rather than the definition being weakened. If later, c or T
+is miscalibrated — c gets adjusted, never the metrics. (Currently green
+with the defaults: GSR certifies at 10/52 and 11/100 at T=2000.)
+
+All sweep outputs and the explore view report `shufflesToMix` as
+`certifiedMixed` under this definition, alongside M_KNEE/M_FAIR reference
+lines and the log₂ rising-sequence floor.
 
 ## The log2 floor
 
@@ -111,19 +149,24 @@ literature. To regenerate: `python3 tools/exact_tv.py` and paste.
 checks passed in CI (`npm test` runs them; `npm run validate:report` writes
 `results/validation.json`, rendered on the `/validate` page):
 
-- **(a) Uniform references** — 10⁵ random permutations reproduce each
-  metric's documented mean/SD within MC error.
+- **(a) Uniform references** — 10⁵ random permutations reproduce every
+  battery metric's documented mean/SD within MC error (including the exact
+  H_n mean/SD of the sequential guesser and the Bernoulli reference of
+  topCardHome).
 - **(b) Single-riffle invariant** — one GSR from sorted ⇒ rising sequences
   ≤ 2; after k riffles ≤ 2^k. Any violation is a bug, full stop.
 - **(c) Faro control** — out-faro on 52 returns to start in exactly 8
-  shuffles; repeated faro cycles forever and never settles in the uniform
-  band.
-- **(d) GSR convergence vs anchors** — generic metrics settle at ~7–8
-  shuffles (n=52) / ~8–10 (n=100); the rising-sequence statistic's residual
-  bias tracks the exact anchor as bias ≈ 2.7 × TV(m), and its detection
-  boundary at T trajectories lands exactly where the anchors predict.
-- **(e) Rising-sequence floor** — reported, and rising sequences never
-  report mixed below it.
+  shuffles; repeated faro cycles forever and never certifies.
+- **(d) GSR convergence vs anchors** — the rising-sequence statistic's
+  residual bias tracks the exact anchor as bias ≈ 2.7 × TV(m) and its
+  certification boundary lands where the anchors predict; topCardHome
+  follows the (1 + λ/2)/n excess law within MC error; the other metrics
+  certify in sane windows.
+- **(e) Rising-sequence floor** — rising sequences never certify below
+  ⌈log₂((n+1)/2)⌉ (weak metrics can — which is why the binding metric is
+  always named).
+- **(f) Calibration invariant** — `certifiedMixed(GSR)` = M_FAIR ± 1 for
+  both deck sizes (see the mixedness definition above).
 
 CI fails if any check fails. The `/validate` page renders the same report
 with metric curves for GSR and faro plus the exact-TV overlay.

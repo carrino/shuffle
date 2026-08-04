@@ -29,6 +29,8 @@ export interface ChartSpec {
   band?: { lo: number; hi: number; label?: string };
   /** horizontal reference line (e.g. uniform mean) */
   refLine?: number;
+  /** labeled vertical reference lines (e.g. M_FAIR, log2 floor) */
+  vLines?: { x: number; label: string }[];
   logY?: boolean;
   height?: number;
 }
@@ -127,6 +129,26 @@ function buildPlot(m: Mounted): void {
             ctx.moveTo(xMin, y);
             ctx.lineTo(xMax, y);
             ctx.stroke();
+            ctx.restore();
+          }
+          if (spec.vLines) {
+            const yTop = u.bbox.top;
+            const yBot = u.bbox.top + u.bbox.height;
+            ctx.save();
+            ctx.strokeStyle = cssVar('--text-muted');
+            ctx.fillStyle = cssVar('--text-muted');
+            ctx.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
+            ctx.setLineDash([2, 4]);
+            spec.vLines.forEach((v, i) => {
+              const x = u.valToPos(v.x, 'x', true);
+              if (x < xMin || x > xMax) return;
+              ctx.beginPath();
+              ctx.moveTo(x, yTop);
+              ctx.lineTo(x, yBot);
+              ctx.stroke();
+              // stagger label heights so close-together lines stay readable
+              ctx.fillText(v.label, x + 3 * devicePixelRatio, yTop + (10 + 11 * i) * devicePixelRatio);
+            });
             ctx.restore();
           }
         },

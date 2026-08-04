@@ -153,6 +153,120 @@ export function randomLinearFunctionals(
   return maxAbsZ;
 }
 
+/**
+ * Indicator: is the original top card back on top? Trajectory means estimate
+ * P(pos(0) = 0).
+ *
+ * Uniform reference: mean 1/n, SD sqrt((1/n)(1 - 1/n)) (exact, Bernoulli).
+ * For GSR the known excess is ~ lambda/2 in relative terms with
+ * lambda = n/2^m, i.e. P ≈ (1 + lambda/2)/n — see topCardHomeGSRTheory,
+ * which /validate overlays on the measured curve. This statistic stays
+ * biased well after risingSequences saturates (2^k ≥ (n+1)/2), making it
+ * the late-stage-sensitive check of the battery.
+ */
+export function topCardHome(deck: Int16Array): number {
+  return deck[0] === 0 ? 1 : 0;
+}
+
+/** GSR asymptotic P(top card at home) after m riffles (valid for small lambda). */
+export function topCardHomeGSRTheory(n: number, m: number): number {
+  const lambda = n / 2 ** m;
+  return Math.min(1, (1 + lambda / 2) / n);
+}
+
+/**
+ * Expected correct guesses by an adversary who guesses each card before it
+ * is revealed, top to bottom, with full memory — the "exploitable during
+ * play" metric, expected to certify last.
+ *
+ * Uniform reference (EXACT, strategy-independent): with full memory and any
+ * strategy that guesses an unrevealed card, P(correct | k cards unrevealed)
+ * = 1/k whatever the history, so the per-step indicators are independent
+ * Bernoulli(1/k): mean H_n = sum 1/k (≈ 5.187 for n=100) and variance
+ * sum (1/k)(1 - 1/k). The MC uniform-reference validation re-verifies both.
+ *
+ * The implemented guesser tracks rising-sequence threads: revealed cards
+ * chain into threads (x extends x-1); guess (1) the successor of the most
+ * recently extended thread — this rides clumpy runs, (2) else the successor
+ * of the longest revealed thread, (3) else the smallest unrevealed value.
+ * A heuristic lower bound on the optimal adversary, deterministic given the
+ * deck.
+ */
+export interface GuesserScratch {
+  revealed: Uint8Array;
+  chainLen: Int16Array;
+  tails: Int16Array; // open tails (revealed value whose successor is unrevealed)
+  tailPos: Int16Array; // value -> index in tails, -1 if absent
+}
+
+export function makeGuesserScratch(n: number): GuesserScratch {
+  return {
+    revealed: new Uint8Array(n),
+    chainLen: new Int16Array(n),
+    tails: new Int16Array(n),
+    tailPos: new Int16Array(n),
+  };
+}
+
+export function sequentialGuesser(deck: Int16Array, s: GuesserScratch): number {
+  const n = deck.length;
+  s.revealed.fill(0);
+  s.tailPos.fill(-1);
+  let tailCount = 0;
+  let minUnrevealed = 0;
+  let lastRevealed = -1;
+  let correct = 0;
+
+  const removeTail = (v: number): void => {
+    const i = s.tailPos[v]!;
+    if (i < 0) return;
+    const last = s.tails[tailCount - 1]!;
+    s.tails[i] = last;
+    s.tailPos[last] = i;
+    s.tailPos[v] = -1;
+    tailCount--;
+  };
+
+  for (let i = 0; i < n; i++) {
+    // ---- guess ----
+    let guess: number;
+    if (lastRevealed >= 0 && lastRevealed + 1 < n && s.revealed[lastRevealed + 1] === 0) {
+      guess = lastRevealed + 1; // ride the current run
+    } else {
+      let best = -1;
+      let bestLen = 0;
+      for (let t = 0; t < tailCount; t++) {
+        const v = s.tails[t]!;
+        if (s.chainLen[v]! > bestLen) {
+          bestLen = s.chainLen[v]!;
+          best = v;
+        }
+      }
+      guess = best >= 0 ? best + 1 : minUnrevealed;
+    }
+
+    // ---- reveal ----
+    const x = deck[i]!;
+    if (x === guess) correct++;
+    s.revealed[x] = 1;
+    s.chainLen[x] = x > 0 && s.revealed[x - 1] === 1 ? s.chainLen[x - 1]! + 1 : 1;
+    // x may fill a gap: propagate the merged chain length rightward so the
+    // merged chain's tail is ranked by its true length
+    for (let j = x + 1; j < n && s.revealed[j] === 1; j++) {
+      s.chainLen[j] = s.chainLen[j - 1]! + 1;
+    }
+    if (x > 0 && s.tailPos[x - 1]! >= 0) removeTail(x - 1); // successor now revealed
+    if (x + 1 < n && s.revealed[x + 1] === 0) {
+      s.tails[tailCount] = x;
+      s.tailPos[x] = tailCount;
+      tailCount++;
+    }
+    while (minUnrevealed < n && s.revealed[minUnrevealed] === 1) minUnrevealed++;
+    lastRevealed = x;
+  }
+  return correct;
+}
+
 /** posBuf[value] = index of value in deck. */
 export function fillPositions(deck: Int16Array, posBuf: Int16Array): void {
   for (let i = 0; i < deck.length; i++) posBuf[deck[i]!] = i;
@@ -166,13 +280,17 @@ export type MetricName =
   | 'risingSequences'
   | 'adjacentPairDisplacement'
   | 'spearmanToStart'
-  | 'maxLinearFunctionalZ';
+  | 'maxLinearFunctionalZ'
+  | 'topCardHome'
+  | 'sequentialGuesser';
 
 export const METRIC_NAMES: readonly MetricName[] = [
   'risingSequences',
   'adjacentPairDisplacement',
   'spearmanToStart',
   'maxLinearFunctionalZ',
+  'topCardHome',
+  'sequentialGuesser',
 ];
 
 export interface UniformRef {
@@ -199,6 +317,18 @@ export function uniformReference(n: number, metric: MetricName): UniformRef {
       return { mean: 0, sd: 1 / Math.sqrt(n - 1), exact: true };
     case 'maxLinearFunctionalZ':
       return { mean: MAX_ABS_Z_5_MEAN, sd: MAX_ABS_Z_5_SD, exact: false };
+    case 'topCardHome':
+      return { mean: 1 / n, sd: Math.sqrt((1 / n) * (1 - 1 / n)), exact: true };
+    case 'sequentialGuesser': {
+      // exact: independent Bernoulli(1/k) steps under uniform (see docstring)
+      let mean = 0;
+      let variance = 0;
+      for (let k = 1; k <= n; k++) {
+        mean += 1 / k;
+        variance += (1 / k) * (1 - 1 / k);
+      }
+      return { mean, sd: Math.sqrt(variance), exact: true };
+    }
   }
 }
 
@@ -218,6 +348,7 @@ export interface MetricComputer {
 export function makeMetricComputer(n: number, lfSamples = 100_000): MetricComputer {
   const posBuf = new Int16Array(n);
   const ref = linearFunctionalRef(n, lfSamples);
+  const guesserScratch = makeGuesserScratch(n);
   return {
     compute(deck: Int16Array) {
       return {
@@ -225,6 +356,8 @@ export function makeMetricComputer(n: number, lfSamples = 100_000): MetricComput
         adjacentPairDisplacement: adjacentPairDisplacement(deck, posBuf),
         spearmanToStart: spearmanToStart(deck, posBuf),
         maxLinearFunctionalZ: randomLinearFunctionals(deck, posBuf, ref),
+        topCardHome: topCardHome(deck),
+        sequentialGuesser: sequentialGuesser(deck, guesserScratch),
       };
     },
   };

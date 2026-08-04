@@ -3,12 +3,13 @@
 // Runs headless under vitest (CI fails if any check fails) and in the
 // browser on the /validate page (same code, same numbers).
 //
-// A note on what "mixed" means here: mixedAt uses the z-distance of the
-// trajectory MEAN from the uniform reference, so it scales with sqrt(T) —
-// more trajectories detect smaller residual bias and push mixedAt later.
-// That is a feature, not a bug: the check below verifies that the point
-// where rising-sequence bias sinks below detectability is exactly where the
-// EXACT Bayer-Diaconis TV anchors say it should be (bias ≈ RATIO * TV).
+// Mixedness here follows the two-layer definition in experiment.ts:
+// the THEORY layer M(eps) from the exact anchors (M_KNEE / M_FAIR /
+// M_STRICT), and the EMPIRICAL layer certifiedMixed(c, alpha) — TOST-style
+// equivalence certification, never fail-to-reject. Check (f) is the
+// calibration invariant binding the two layers together: certifiedMixed on
+// pure GSR must land within ±1 shuffle of M_FAIR, else the metric battery
+// is blind (too early) or c/T is miscalibrated (too late).
 
 import { makePRNG, makeDeck, fisherYates } from './prng';
 import { gsr, faro } from './operators';
@@ -16,11 +17,19 @@ import {
   makeMetricComputer,
   risingSequences,
   uniformReference,
+  topCardHomeGSRTheory,
   METRIC_NAMES,
   type MetricName,
 } from './metrics';
-import { metricCurves, mixedAtFromZ, ENTER_BAND, type CurveResult } from './experiment';
-import { EXACT_TV_52, EXACT_TV_100, exactTV } from './anchors';
+import {
+  metricCurves,
+  certK,
+  invNorm,
+  DEFAULT_CERT,
+  type CurveResult,
+  type CertStatus,
+} from './experiment';
+import { EXACT_TV_52, EXACT_TV_100, exactTV, theoryMilestones } from './anchors';
 
 export interface ValidationOptions {
   /** samples for the uniform-reference check */
@@ -57,14 +66,20 @@ export interface ValidationReport {
   pass: boolean;
   options: ValidationOptions;
   checks: CheckResult[];
-  /** curves for the /validate page charts */
+  /** curves (with certification) for the /validate page charts */
   gsr52: CurveResult;
   gsr100: CurveResult;
   faro52: CurveResult;
   faro100: CurveResult;
   anchors: { tv52: readonly number[]; tv100: readonly number[] };
+  milestones: {
+    n52: { knee: number; fair: number; strict: number };
+    n100: { knee: number; fair: number; strict: number };
+  };
   /** ceil(log2((n+1)/2)) — no riffle-family shuffle can be random before this */
   log2Floor: { n52: number; n100: number };
+  /** measured vs theory topCardHome curves for the /validate overlay */
+  topCardTheory: { n52: number[]; n100: number[] };
   generatedAt?: string;
 }
 
@@ -72,13 +87,19 @@ export interface ValidationReport {
  * Empirical ratio between rising-sequence mean bias (in single-permutation
  * SDs) and the exact TV distance, in the asymptotic regime. Measured ≈ 2.7
  * and stable over m for both n=52 and n=100; check (d) re-verifies stability
- * on every run before using it to predict the detection boundary.
+ * on every run before using it to predict the certification boundary.
  */
 export const RISING_BIAS_TV_RATIO = 2.7;
 
-export function predictedRisingMixedAt(n: 52 | 100, T: number): number {
+/**
+ * Anchor-predicted certification shuffle for the rising-sequence metric:
+ * first m with RATIO*TV(m) + z/sqrt(T) <= c (bias plus CI half-width, both
+ * in single-deck SD units, inside the equivalence band).
+ */
+export function predictedRisingCertifiedAt(n: 52 | 100, T: number): number {
+  const z = invNorm(1 - DEFAULT_CERT.alpha / 2);
   for (let m = 1; m <= 40; m++) {
-    if (RISING_BIAS_TV_RATIO * exactTV(n, m) * Math.sqrt(T) < ENTER_BAND) return m;
+    if (RISING_BIAS_TV_RATIO * exactTV(n, m) + z / Math.sqrt(T) <= DEFAULT_CERT.c) return m;
   }
   return Infinity;
 }
@@ -99,22 +120,22 @@ export function runValidation(
   checks.push(checkUniformReferences(100, opts));
 
   // ---- (b) Single-riffle invariant ---------------------------------------
-  report('Single-riffle invariant…', 0.25);
+  report('Single-riffle invariant…', 0.3);
   checks.push(checkRiffleInvariant(opts));
 
-  // ---- curves (used by c and d) ------------------------------------------
-  report('GSR trajectories n=52…', 0.35);
+  // ---- curves (used by c, d, e, f) ---------------------------------------
+  report('GSR trajectories n=52…', 0.4);
   const gsr52 = metricCurves(gsr, {
-    n: 52, K: 16, T: opts.trajectories, seed: opts.seed + 1, lfSamples: opts.lfSamples,
+    n: 52, K: 18, T: opts.trajectories, seed: opts.seed + 1, lfSamples: opts.lfSamples,
   });
-  report('GSR trajectories n=100…', 0.55);
+  report('GSR trajectories n=100…', 0.6);
   const gsr100 = metricCurves(gsr, {
-    n: 100, K: 20, T: opts.trajectories, seed: opts.seed + 2, lfSamples: opts.lfSamples,
+    n: 100, K: 22, T: opts.trajectories, seed: opts.seed + 2, lfSamples: opts.lfSamples,
   });
-  report('Faro control…', 0.8);
+  report('Faro control…', 0.85);
   const faroFn = (deck: Int16Array, scratch: Int16Array) => faro(deck, scratch, false);
-  // Faro is deterministic — 2 identical trajectories suffice for curves; the
-  // z-of-mean then reflects pure bias at an effective T of `trajectories`.
+  // Faro is deterministic — 2 identical trajectories give exact means with
+  // zero CI width, so certification judges pure bias.
   const faro52 = metricCurves(faroFn, {
     n: 52, K: 24, T: 2, seed: opts.seed + 3, lfSamples: opts.lfSamples,
   });
@@ -123,15 +144,18 @@ export function runValidation(
   });
 
   // ---- (c) Faro control ---------------------------------------------------
-  checks.push(checkFaroControl());
+  checks.push(checkFaroControl(faro52, faro100));
 
   // ---- (d) GSR convergence vs anchors ------------------------------------
-  report('Checking convergence against anchors…', 0.92);
+  report('Checking convergence against anchors…', 0.94);
   checks.push(checkGsrConvergence(52, gsr52, opts.trajectories));
   checks.push(checkGsrConvergence(100, gsr100, opts.trajectories));
 
-  // ---- (e) rising-sequence floor (reported, and sanity-asserted) ----------
+  // ---- (e) rising-sequence floor ------------------------------------------
   checks.push(checkLog2Floor(gsr52, gsr100));
+
+  // ---- (f) calibration invariant ------------------------------------------
+  checks.push(checkCalibration(gsr52, gsr100));
 
   report('Done', 1);
   return {
@@ -143,7 +167,12 @@ export function runValidation(
     faro52,
     faro100,
     anchors: { tv52: EXACT_TV_52, tv100: EXACT_TV_100 },
+    milestones: { n52: theoryMilestones(52), n100: theoryMilestones(100) },
     log2Floor: { n52: log2Floor(52), n100: log2Floor(100) },
+    topCardTheory: {
+      n52: Array.from({ length: gsr52.K }, (_, i) => topCardHomeGSRTheory(52, i + 1)),
+      n100: Array.from({ length: gsr100.K }, (_, i) => topCardHomeGSRTheory(100, i + 1)),
+    },
   };
 }
 
@@ -230,7 +259,7 @@ function checkRiffleInvariant(opts: ValidationOptions): CheckResult {
   return { id: 'b-riffle-invariant', name: 'Single-riffle invariant (rising sequences ≤ 2^k)', pass, details };
 }
 
-function checkFaroControl(): CheckResult {
+function checkFaroControl(faro52: CurveResult, faro100: CurveResult): CheckResult {
   const details: string[] = [];
   let pass = true;
 
@@ -251,64 +280,62 @@ function checkFaroControl(): CheckResult {
     details.push(`out-faro period on 52 cards: ${period} (expected exactly 8) ${ok ? 'OK' : 'FAIL'}`);
   }
 
-  // Repeated faro never converges: rising sequences cycle (2,4,8,16,32,13,26,1
-  // for n=52) and keep re-entering fully-ordered states — they never settle in
-  // the uniform band. We assert the deterministic trajectory (i) returns to
-  // rising-sequence count 1, and (ii) is outside the ±2-SD uniform band for
-  // at least half of every period — i.e. mixedAt = never.
-  for (const n of [52, 100] as const) {
+  // Repeated faro never certifies: the trajectory is periodic (rising
+  // sequences cycle 2,4,8,16,32,13,26,1 for n=52, re-entering full order),
+  // so no metric's mean can stay inside the equivalence band.
+  for (const [n, result] of [[52, faro52], [100, faro100]] as const) {
     const deck = makeDeck(n);
     const scratch = new Int16Array(n);
     const pos = new Int16Array(n);
-    const ref = uniformReference(n, 'risingSequences');
-    const K = 64;
-    const zs = new Float64Array(K);
     let minRs = Infinity;
     let maxRs = 0;
-    for (let k = 0; k < K; k++) {
+    for (let k = 0; k < 64; k++) {
       faro(deck, scratch, false);
       const rs = risingSequences(deck, pos);
       minRs = Math.min(minRs, rs);
       maxRs = Math.max(maxRs, rs);
-      // deterministic: treat as bias with an effective T of 2000
-      zs[k] = ((rs - ref.mean) / ref.sd) * Math.sqrt(2000);
     }
-    const mixed = mixedAtFromZ(zs);
-    const ok = mixed === Infinity && minRs === 1;
+    const overall = result.cert.overall.status;
+    const ok = overall !== 'certified' && minRs === 1;
     pass &&= ok;
     details.push(
-      `n=${n}: rising sequences over 64 faros stay in [${minRs}, ${maxRs}], ` +
-        `re-entering full order (min=1); mixedAt = ${mixed === Infinity ? 'never' : mixed} ` +
-        `(expected never) ${ok ? 'OK' : 'FAIL'}`,
+      `n=${n}: rising sequences over 64 faros stay in [${minRs}, ${maxRs}] re-entering full ` +
+        `order (min=1); certification outcome: ${overall} (must not certify) ${ok ? 'OK' : 'FAIL'}`,
     );
   }
-  return { id: 'c-faro-control', name: 'Faro control (perfect interleave does not mix)', pass, details };
+  return { id: 'c-faro-control', name: 'Faro control (perfect interleave never certifies)', pass, details };
 }
 
 const GENERIC_METRICS: readonly MetricName[] = [
   'adjacentPairDisplacement',
   'spearmanToStart',
   'maxLinearFunctionalZ',
+  'topCardHome',
+  'sequentialGuesser',
 ];
+
+function fmtCert(s: CertStatus): string {
+  return s.status === 'certified' ? `certified at ${s.k}` : s.status;
+}
 
 function checkGsrConvergence(n: 52 | 100, result: CurveResult, T: number): CheckResult {
   const details: string[] = [];
   let pass = true;
 
-  // Generic metrics settle at ~7-8 shuffles for n=52 (~8-10 for n=100).
+  // Non-rising metrics certify in a sane window (they saturate before the
+  // rising-sequence statistic — see check e for why that's expected).
   const genericMax = n === 52 ? 9 : 10;
   for (const m of GENERIC_METRICS) {
-    const k = result.mixedAt[m];
-    const ok = k >= 2 && k <= genericMax;
+    const s = result.cert.perMetric[m];
+    const ok = s.status === 'certified' && s.k >= 2 && s.k <= genericMax;
     pass &&= ok;
-    details.push(`${m}: mixed at ${k} (expected 2..${genericMax}) ${ok ? 'OK' : 'FAIL'}`);
+    details.push(`${m}: ${fmtCert(s)} (expected certified in 2..${genericMax}) ${ok ? 'OK' : 'FAIL'}`);
   }
 
-  // Rising sequences — the Bayer-Diaconis statistic — stays detectable at
-  // trajectory count T exactly as long as the exact anchors predict:
-  // mean bias ≈ RISING_BIAS_TV_RATIO × TV(m). Two checks:
-  // 1. the bias/TV ratio is stable in the well-measured asymptotic regime;
-  // 2. observed mixedAt is within ±2 of the anchor-predicted boundary.
+  // Rising sequences — the Bayer-Diaconis statistic — certifies exactly
+  // where the exact anchors predict: mean bias ≈ RISING_BIAS_TV_RATIO×TV(m).
+  // Two checks: the bias/TV ratio is stable in the well-measured asymptotic
+  // regime, and the observed certification is within ±2 of the prediction.
   const rs = result.curves.risingSequences;
   const ratios: number[] = [];
   for (let m = 1; m <= result.K; m++) {
@@ -324,14 +351,37 @@ function checkGsrConvergence(n: 52 | 100, result: CurveResult, T: number): Check
       `[${ratios.map((r) => r.toFixed(2)).join(', ')}] (expected all in 1.8..3.8) ${ratioOk ? 'OK' : 'FAIL'}`,
   );
 
-  const predicted = predictedRisingMixedAt(n, T);
-  const observed = result.mixedAt.risingSequences;
+  const predicted = predictedRisingCertifiedAt(n, T);
+  const observed = certK(result.cert.perMetric.risingSequences);
   const mixOk = Number.isFinite(observed) && Math.abs(observed - predicted) <= 2;
   pass &&= mixOk;
   details.push(
-    `risingSequences: mixed at ${observed}, anchor-predicted ${predicted} at T=${T} ` +
-      `(tolerance ±2) ${mixOk ? 'OK' : 'FAIL'}`,
+    `risingSequences: ${fmtCert(result.cert.perMetric.risingSequences)}, anchor-predicted ` +
+      `${predicted} at T=${T} (tolerance ±2) ${mixOk ? 'OK' : 'FAIL'}`,
   );
+
+  // topCardHome tracks the GSR excess law P ≈ (1 + λ/2)/n with λ = n/2^m:
+  // pooled deviation from theory over the λ ≤ 1.5 regime within MC error.
+  {
+    const ref = uniformReference(n, 'topCardHome');
+    const ms: number[] = [];
+    let dev = 0;
+    for (let m = 1; m <= result.K; m++) {
+      const lambda = n / 2 ** m;
+      if (lambda <= 1.5) {
+        ms.push(m);
+        dev += result.curves.topCardHome.mean[m - 1]! - topCardHomeGSRTheory(n, m);
+      }
+    }
+    const pooledSe = ref.sd / Math.sqrt(T) / Math.sqrt(ms.length);
+    const avgDev = dev / ms.length;
+    const ok = Math.abs(avgDev) < 4 * pooledSe;
+    pass &&= ok;
+    details.push(
+      `topCardHome vs (1+λ/2)/n over m=${ms[0]}..${ms[ms.length - 1]}: pooled deviation ` +
+        `${avgDev.toExponential(2)} (tol ±${(4 * pooledSe).toExponential(2)}) ${ok ? 'OK' : 'FAIL'}`,
+    );
+  }
 
   return {
     id: `d-gsr-convergence-${n}`,
@@ -348,19 +398,48 @@ function checkLog2Floor(gsr52: CurveResult, gsr100: CurveResult): CheckResult {
     const floor = log2Floor(n);
     // With fewer than ceil(log2((n+1)/2)) riffles the deck cannot even reach
     // the MEAN rising-sequence count of a uniform permutation (≤ 2^k of
-    // them), so the rising-sequence metric provably cannot be mixed below the
+    // them), so the rising-sequence metric provably cannot certify below the
     // floor. Weaker metrics CAN saturate earlier — that is exactly why the
-    // floor matters and why we always report the worst metric.
-    const ok = result.mixedAt.risingSequences >= floor;
+    // floor matters and why the binding metric is always named.
+    const k = certK(result.cert.perMetric.risingSequences);
+    const ok = k >= floor;
     pass &&= ok;
-    const early = METRIC_NAMES.filter((m) => result.mixedAt[m] < floor);
+    const early = METRIC_NAMES.filter((m) => certK(result.cert.perMetric[m]) < floor);
     details.push(
-      `n=${n}: floor ceil(log2((n+1)/2)) = ${floor}; risingSequences mixed at ` +
-        `${result.mixedAt.risingSequences} (must be ≥ floor) ${ok ? 'OK' : 'FAIL'}` +
+      `n=${n}: floor ceil(log2((n+1)/2)) = ${floor}; risingSequences certified at ` +
+        `${k} (must be ≥ floor) ${ok ? 'OK' : 'FAIL'}` +
         (early.length > 0
-          ? `; note: [${early.join(', ')}] saturate below the floor — weak metrics alone are not evidence of mixing`
+          ? `; note: [${early.join(', ')}] certify below the floor — weak metrics alone are not evidence of mixing`
           : ''),
     );
   }
   return { id: 'e-log2-floor', name: 'Rising-sequence floor (information-theoretic minimum)', pass, details };
+}
+
+function checkCalibration(gsr52: CurveResult, gsr100: CurveResult): CheckResult {
+  // THE calibration invariant: certifiedMixed on pure GSR must land within
+  // ±1 shuffle of M_FAIR (theory layer, TV ≤ 0.05) for both deck sizes.
+  // Earlier ⇒ the battery is blind to late-stage structure — fail the build
+  // rather than weaken the definition. Later ⇒ c or T is miscalibrated —
+  // adjust c, never the metrics.
+  const details: string[] = [];
+  let pass = true;
+  for (const [n, result] of [[52, gsr52], [100, gsr100]] as const) {
+    const fair = theoryMilestones(n).fair;
+    const overall = result.cert.overall;
+    const k = certK(overall);
+    const ok = Number.isFinite(k) && Math.abs(k - fair) <= 1;
+    pass &&= ok;
+    details.push(
+      `n=${n}: GSR certifiedMixed(c=${result.cert.options.c}, alpha=${result.cert.options.alpha}, ` +
+        `T=${result.T}) = ${fmtCert(overall)} (binding: ${result.cert.bindingMetric ?? '—'}); ` +
+        `M_FAIR = ${fair} (tolerance ±1) ${ok ? 'OK' : 'FAIL'}`,
+    );
+  }
+  return {
+    id: 'f-calibration',
+    name: 'Calibration invariant (empirical certification ≡ theory layer at M_FAIR ± 1)',
+    pass,
+    details,
+  };
 }
