@@ -174,6 +174,22 @@ nav.topnav .brand {
   font-size: 0.78rem;
   color: var(--text-muted);
 }
+/* reserve stable space for uPlot's hover legend so values popping in on
+   mouseover never change the card's height */
+.chart-card .u-legend {
+  min-height: 3.4em;
+  font-size: 0.8rem;
+}
+.chart-card .u-legend .u-value {
+  display: inline-block;
+  min-width: 7ch;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.chart-card .u-legend th,
+.chart-card .u-legend td {
+  white-space: nowrap;
+}
 
 /* buttons + inputs */
 button,

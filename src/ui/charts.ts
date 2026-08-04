@@ -135,10 +135,11 @@ function buildPlot(m: Mounted): void {
             const yTop = u.bbox.top;
             const yBot = u.bbox.top + u.bbox.height;
             ctx.save();
-            ctx.strokeStyle = cssVar('--text-muted');
-            ctx.fillStyle = cssVar('--text-muted');
+            ctx.strokeStyle = cssVar('--series-4');
+            ctx.fillStyle = cssVar('--series-4');
             ctx.font = `${10 * devicePixelRatio}px system-ui, sans-serif`;
-            ctx.setLineDash([2, 4]);
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([6, 4]);
             spec.vLines.forEach((v, i) => {
               const x = u.valToPos(v.x, 'x', true);
               if (x < xMin || x > xMax) return;

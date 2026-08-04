@@ -84,9 +84,10 @@ app.innerHTML = `
   <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
-<p class="muted" id="kbdHint">Keyboard: <code>r</code> / <code>b</code> tap a card,
-<code>Backspace</code>/<code>z</code> undo, <code>Shift+R</code> / <code>Shift+B</code>
-fill the remainder (the remnant block) with one color.</p>
+<p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
+or <code>r</code>/<code>b</code> tap a card (left = R, right = B);
+<code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
+(or <code>Shift+R</code>/<code>Shift+B</code>) fill the remainder with one color.</p>
 <div id="pasteArea" style="display:none">
   <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
@@ -202,11 +203,11 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key;
-  if (key === 'r') tap('R');
-  else if (key === 'b') tap('B');
-  else if (key === 'R') fillRest('R');
-  else if (key === 'B') fillRest('B');
-  else if (key === 'Backspace' || key === 'z' || key === 'u') undo();
+  if (key === 'r' || key === 'z' || key === 'ArrowLeft') tap('R');
+  else if (key === 'b' || key === 'x' || key === 'ArrowRight') tap('B');
+  else if (key === 'R' || key === 'Z') fillRest('R');
+  else if (key === 'B' || key === 'X') fillRest('B');
+  else if (key === 'Backspace' || key === 'u') undo();
   else return;
   e.preventDefault();
 });
