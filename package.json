@@ -1,0 +1,35 @@
+{
+  "name": "shuffle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Simulating mash shuffles of a 100-card deck: how many shuffles until random?",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/carrino/shuffle"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts",
+    "test": "vitest run",
+    "test:full": "FULL_VALIDATION=1 vitest run",
+    "validate:report": "tsx scripts/gen-report.ts",
+    "ci": "npm run typecheck && npm run lint && npm run test && npm run validate:report && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "eslint": "^10.8.0",
+    "tsx": "^4.23.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "uplot": "^1.6.32"
+  }
+}
