@@ -57,20 +57,20 @@ describe('analyzeString (hand-checked)', () => {
     expect(a.runs).toEqual([1, 1]); // zone = RRRBR minus overhang
   });
 
-  it('detects a top remnant on BBBBRBRB (B-led bottom = overhang anomaly 0)', () => {
+  it('detects a top remnant on BBBBRBRB with a signed lead at the bottom', () => {
     const a = analyzeString(rec('BBBBRBRB', 2));
     expect(a.remnantEnd).toBe('top');
     expect(a.remnantSize).toBe(4);
-    expect(a.overhang).toBe(0); // string ends with B: no small-color lead
-    expect(a.runs).toEqual([1, 1, 1, 1]); // zone = RBRB
+    expect(a.overhang).toBe(-1); // bottom end leads with a single B
+    expect(a.runs).toEqual([1, 1, 1]); // zone = RBRB minus the lead run
   });
 
-  it('a big-color lead reads as overhang 0, runs stay interior', () => {
+  it('a big-color lead reads as NEGATIVE overhang (seated below flush)', () => {
     const a = analyzeString(rec('BBRRBRBBBB', 3));
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(4);
-    expect(a.overhang).toBe(0);
-    expect(a.runs).toEqual([2, 2, 1, 1]); // zone = BBRRBR
+    expect(a.overhang).toBe(-2); // BB on top before the first lifted card
+    expect(a.runs).toEqual([2, 1, 1]); // zone = BBRRBR minus the lead run
   });
 });
 
@@ -146,6 +146,47 @@ describe('fit roundtrip — synthesize from a known config, recover it', () => {
     const fit = fitRecords('sim', synthesize(cfg, 100, 9, 300));
     expect(Math.abs(fit.config.overhangMean - 5)).toBeLessThan(0.5);
     expect(Math.abs(fit.config.overhangSd - 2)).toBeLessThan(0.6);
+  });
+
+  it('recovers a NEGATIVE overhang habit (big packet leads)', () => {
+    const cfg: MashConfig = {
+      splitMean: 35,
+      splitSd: 2,
+      mu: 1.4,
+      overhangMean: -4,
+      overhangSd: 1.5,
+      remnantEnd: 'bottom',
+      positionDependence: 0,
+    };
+    const fit = fitRecords('sim', synthesize(cfg, 100, 21, 300));
+    expect(Math.abs(fit.config.overhangMean - -4)).toBeLessThan(0.6);
+    expect(Math.abs(fit.config.overhangSd - 1.5)).toBeLessThan(0.6);
+  });
+
+  it('emits the empirical run distribution and mash can consume it', () => {
+    // clumpy synthesis -> fitted runDist should be geometric-ish with
+    // P(1) ~ 1/mu, and it plugs straight back into MashConfig.runDist
+    const cfg: MashConfig = {
+      splitMean: 40,
+      splitSd: 3,
+      mu: 2,
+      overhangMean: 1,
+      overhangSd: 0,
+      remnantEnd: 'bottom',
+      positionDependence: 0,
+    };
+    const fit = fitRecords('sim', synthesize(cfg, 100, 31, 400));
+    const rd = fit.config.runDist!;
+    expect(rd.length).toBeGreaterThan(2);
+    const total = rd.reduce((a, b) => a + b, 0);
+    expect(Math.abs(total - 1)).toBeLessThan(0.01);
+    expect(Math.abs(rd[0]! - 0.5)).toBeLessThan(0.06); // geometric p=1/mu
+    // and the operator accepts it: multiset preserved over shuffles
+    const deck = makeDeck(100);
+    const scratch = new Int16Array(100);
+    const rng = makePRNG(5);
+    for (let k = 0; k < 20; k++) mash(deck, scratch, rng, { ...cfg, runDist: rd });
+    expect([...deck].sort((a, b) => a - b)).toEqual([...Array(100).keys()]);
   });
 });
 

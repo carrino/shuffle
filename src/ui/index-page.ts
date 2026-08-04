@@ -47,11 +47,21 @@ const num = (k: string, d: number) => {
 // parametric in n, with exact TV anchors baked in for both sizes
 let deckN: AnchoredDeckSize = num('n', 100) === 60 ? 60 : 100;
 
+// A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
+// (the /data "simulate" links). While active it replaces the geometric(mu)
+// model; touching the mu slider reverts to geometric.
+let runDist: number[] | null = (() => {
+  const rd = params.get('rd');
+  if (!rd) return null;
+  const vals = rd.split(',').map(Number);
+  return vals.length > 0 && vals.every((v) => Number.isFinite(v) && v >= 0) ? vals : null;
+})();
+
 const SLIDERS: SliderSpec[] = [
   { key: 'splitMean', label: 'Bottom-cut size (small packet)', min: 5, max: Math.floor(deckN / 2), step: 1, value: num('split', Math.round(deckN * 0.35)) },
   { key: 'splitSd', label: 'Split variability ±', min: 0, max: 15, step: 0.5, value: num('splitSd', 3) },
   { key: 'mu', label: 'Run length mu (1 = perfect interleaving)', min: 1, max: 4, step: 0.05, value: num('mu', 1) },
-  { key: 'overhangMean', label: 'Overhang (cards above the mesh)', min: 1, max: 15, step: 1, value: num('overhang', 3) },
+  { key: 'overhangMean', label: 'Overhang (− = big packet leads)', min: -10, max: 15, step: 1, value: num('overhang', 3) },
   { key: 'overhangSd', label: 'Overhang variability ±', min: 0, max: 8, step: 0.5, value: num('overhangSd', 2) },
   { key: 'positionDependence', label: 'Clumpier ends (mu profile)', min: 0, max: 3, step: 0.1, value: num('posDep', 0) },
 ];
@@ -132,6 +142,7 @@ function currentConfig(): MashConfig {
     overhangSd: get('overhangSd'),
     remnantEnd: remnantSel.value as 'top' | 'bottom',
     positionDependence: get('positionDependence'),
+    runDist: runDist ?? undefined,
   };
 }
 
@@ -212,6 +223,7 @@ function resim(): void {
     remnant: cfg.remnantEnd,
     posDep: String(cfg.positionDependence ?? 0),
   });
+  if (runDist) p.set('rd', runDist.join(','));
   history.replaceState(null, '', `?${p.toString()}`);
 }
 
@@ -221,6 +233,9 @@ function schedule(): void {
       document.getElementById(`sl-${s.key}`) as HTMLInputElement
     ).value;
   }
+  if (runDist) {
+    document.getElementById('v-mu')!.textContent = 'fitted dist.';
+  }
   if (timer !== null) clearTimeout(timer);
   timer = setTimeout(resim, 120);
 }
@@ -228,6 +243,10 @@ function schedule(): void {
 for (const s of SLIDERS) {
   document.getElementById(`sl-${s.key}`)!.addEventListener('input', schedule);
 }
+// moving the mu slider reverts from a fitted empirical distribution
+document.getElementById('sl-mu')!.addEventListener('input', () => {
+  runDist = null;
+});
 remnantSel.addEventListener('change', schedule);
 
 function fmtCert(s: CertStatus): string {

@@ -33,8 +33,9 @@ via GSR drops. The mechanic matters:
   Because the bottom block moves to the top every shuffle, cards **cycle**
   through the deck: there are no cold spots by design;
 - the lifted packet's first few cards — the **overhang**
-  (`overhangMean ± overhangSd`) — drop as one block above the mesh before
-  interleaving starts;
+  (`overhangMean ± overhangSd`, signed: negative means the lifted packet is
+  seated below flush and big-packet cards lead) — drop as one block above
+  the mesh before interleaving starts;
 - below the overhang the result is built as **alternating runs**: on
   entering a packet, draw a run length from a tunable distribution with mean
   `mu` — `mu=1` is perfect interleaving, `mu>1` is clumpy;
@@ -47,9 +48,12 @@ via GSR drops. The mechanic matters:
 **Pass 1** — before any real clump data — asks the baseline question: how
 many shuffles assuming *perfect interleaving* (`mu=1`), where the only
 randomness is the bottom-cut size and the overhang? Fitted real-world clump
-rates then adjust the answer. Note both the split and the overhang are
-directly observable in the two-color capture data (the overhang is exactly
-the leading small-color run).
+rates then adjust the answer. All three fitted parameters are directly
+observable in the two-color capture data: the split is the R count, the
+signed overhang is the leading run (R = +, B = −), and the interleave
+randomness is the interior run-length histogram — which `mash()` can sample
+from directly (`MashConfig.runDist`), so simulation uses the real clump
+shape rather than just its geometric-mean approximation.
 
 Fitting real two-color observations (Phase 4) recovers these parameters per
 collector.

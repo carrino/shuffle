@@ -36,17 +36,52 @@ describe('mash — mechanics (bottom packet lifts to the top)', () => {
   });
 
   it('the lifted bottom packet leads: old position n−s becomes the new top', () => {
-    // "the cards in spot 65 to 67 become 1-3" — with s=35, old position 65
-    // is the lifted packet's head and always ends up on top.
+    // "the cards in spot 65 to 67 become 1-3" — with s=35 and a positive
+    // overhang, old position 65 is the lifted packet's head and ends up on
+    // top. (With overhang variance the seating can cross flush and go
+    // negative, so this pins the zero-variance case.)
     const deck = makeDeck(100);
     const scratch = new Int16Array(100);
     const rng = makePRNG(7);
-    const cfg = { ...base, splitMean: 35, splitSd: 0 };
+    const cfg = { ...base, splitMean: 35, splitSd: 0, overhangMean: 3, overhangSd: 0 };
     for (let trial = 0; trial < 100; trial++) {
       resetSorted(deck);
       mash(deck, scratch, rng, cfg);
       expect(deck[0]).toBe(65);
     }
+  });
+
+  it('a NEGATIVE overhang leads with big-packet cards, then the lifted packet', () => {
+    // overhang -3, split 35, mu=1 from sorted: top is 0,1,2 (big packet,
+    // seated above), then interleaving starts with the lifted packet:
+    // 65, 3, 66, 4, ...
+    const deck = makeDeck(100);
+    const scratch = new Int16Array(100);
+    const rng = makePRNG(88);
+    const cfg = { ...base, splitMean: 35, splitSd: 0, mu: 1, overhangMean: -3, overhangSd: 0 };
+    resetSorted(deck);
+    mash(deck, scratch, rng, cfg);
+    expect([...deck.slice(0, 8)]).toEqual([0, 1, 2, 65, 3, 66, 4, 67]);
+  });
+
+  it('an empirical run distribution drives the interleave when present', () => {
+    // all runs length 2 (dist puts all mass on L=2), overhang 1, mu ignored:
+    // 65, 0,1, 66,67, 2,3, 68,69, ...
+    const deck = makeDeck(100);
+    const scratch = new Int16Array(100);
+    const rng = makePRNG(89);
+    const cfg = {
+      ...base,
+      splitMean: 35,
+      splitSd: 0,
+      mu: 9, // ignored
+      overhangMean: 1,
+      overhangSd: 0,
+      runDist: [0, 1] as readonly number[],
+    };
+    resetSorted(deck);
+    mash(deck, scratch, rng, cfg);
+    expect([...deck.slice(0, 9)]).toEqual([65, 0, 1, 66, 67, 2, 3, 68, 69]);
   });
 
   it('the overhang block drops intact before interleaving starts', () => {

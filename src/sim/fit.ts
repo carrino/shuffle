@@ -12,10 +12,11 @@
 //   from mu fitting.
 // - Actual split = R count (the whole small packet is red).
 // - Remnant end/size = the longest terminal B run.
-// - The OVERHANG is directly observable: it is exactly the leading
-//   small-color run at the non-remnant end (the lifted packet's head cards
-//   that sit above the mesh). A string that starts with B instead is a
-//   seating anomaly and reads as overhang 0.
+// - The OVERHANG is directly observable and SIGNED: the leading run at the
+//   non-remnant end is the overhang block — small-color run = +overhang
+//   (lifted packet's head above the mesh), big-color run = -overhang (the
+//   lifted packet seated below flush). Either way that run is excluded
+//   from mu fitting.
 // - Position dependence: mean run length by thirds of the interleave zone,
 //   least-squares fit of the (2t−1)² profile used by the operator.
 //
@@ -39,7 +40,7 @@ export interface StringAnalysis {
   runs: number[];
   /** run lengths with their zone position t in 0..1 (for position dependence) */
   runPositions: { length: number; t: number }[];
-  /** leading small-color run at the non-remnant end = the overhang (0 = B-led anomaly) */
+  /** signed overhang: leading R run = +len, leading B run = -len */
   overhang: number;
 }
 
@@ -75,11 +76,13 @@ export function analyzeString(record: MashRecord): StringAnalysis {
     i = j;
   }
 
-  // the overhang is the run at the NON-remnant end, if it is small-color
+  // the SIGNED overhang is the run at the NON-remnant end: R = the lifted
+  // packet's head above the mesh (+), B = seated below flush (-). It is the
+  // seating block either way, so it never counts toward mu.
   const leadIdx = remnantEnd === 'bottom' ? 0 : allRuns.length - 1;
   const lead = allRuns[leadIdx];
-  const overhang = lead !== undefined && lead.color === 'R' ? lead.length : 0;
-  const interior = allRuns.filter((_, idx) => !(overhang > 0 && idx === leadIdx));
+  const overhang = lead === undefined ? 0 : lead.color === 'R' ? lead.length : -lead.length;
+  const interior = allRuns.filter((_, idx) => idx !== leadIdx);
 
   return {
     n,
@@ -167,6 +170,12 @@ export function fitRecords(collector: string, records: MashRecord[]): FitResult 
       overhangSd: round2(sd(overhangs)),
       remnantEnd: remnantTopVotes * 2 > analyses.length ? 'top' : 'bottom',
       positionDependence: round2(positionDependence),
+      // the measured interleave distribution itself — mash() samples from
+      // this directly when present, so simulation uses the real clump
+      // shape, not just its geometric-mean approximation
+      runDist: allRuns.length > 0
+        ? histogram.map((c) => Math.round((c / allRuns.length) * 10000) / 10000)
+        : undefined,
     },
     stats: {
       muSe: allRuns.length > 0 ? muSd / Math.sqrt(allRuns.length) : 0,

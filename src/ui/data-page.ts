@@ -26,6 +26,9 @@ function exploreUrl(cfg: MashConfig): string {
     remnant: cfg.remnantEnd,
     posDep: String(cfg.positionDependence ?? 0),
   });
+  // carry the fitted empirical run distribution so the simulation uses the
+  // real clump shape, not just its mean (first 15 lengths keep URLs sane)
+  if (cfg.runDist && cfg.runDist.length > 0) p.set('rd', cfg.runDist.slice(0, 15).join(','));
   return `index.html?${p.toString()}`;
 }
 

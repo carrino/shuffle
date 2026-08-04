@@ -37,13 +37,22 @@ export interface MashConfig {
   mu: number;
   /**
    * Mean overhang: how many lifted-packet cards sit above the mesh as one
-   * block before interleaving starts (min 1 — the lifted packet's head is
-   * always the new top card). Directly observable in two-color data as the
-   * leading small-color run.
+   * block before interleaving starts. NEGATIVE means the lifted packet is
+   * seated below flush, so |overhang| big-packet cards stay on top before
+   * the first lifted card. 0 = flush (interleaving starts immediately with
+   * the lifted packet). Directly observable in two-color data as the
+   * leading run: small-color run = +overhang, big-color run = -overhang.
    */
   overhangMean: number;
   /** SD of the overhang */
   overhangSd: number;
+  /**
+   * Optional EMPIRICAL run-length distribution (index i = P(run length
+   * i+1)), e.g. fitted from real two-color data. When present it replaces
+   * the geometric(mu) model entirely (mu and positionDependence are
+   * ignored); runs are sampled from it and truncated to what remains.
+   */
+  runDist?: readonly number[];
   /**
    * Which end of the result the big packet's ordered remnant lands on.
    * 'bottom' is the physical default (mash into the top, remainder settles
@@ -92,6 +101,20 @@ function runLength(mu: number, cap: number, rng: PRNG): number {
   return len;
 }
 
+/** Sample from an empirical run-length distribution, truncated to cap. */
+function runLengthEmpirical(dist: readonly number[], cap: number, rng: PRNG): number {
+  if (cap <= 1) return cap;
+  let u = rng.nextFloat();
+  let total = 0;
+  for (const p of dist) total += p;
+  u *= total; // tolerate unnormalized histograms
+  for (let i = 0; i < dist.length; i++) {
+    u -= dist[i]!;
+    if (u <= 0) return Math.min(i + 1, cap);
+  }
+  return Math.min(dist.length, cap);
+}
+
 export interface MashDraw {
   /** actual small-packet size this shuffle */
   split: number;
@@ -113,43 +136,55 @@ export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: Mash
   const { a: A, b: B } = buffers(n);
 
   const s = clamp(Math.round(cfg.splitMean + cfg.splitSd * rng.nextGaussian()), 1, n - 1);
+  const nB = n - s;
   const overhang =
-    cfg.overhangMean <= 1 && cfg.overhangSd === 0
-      ? 1
-      : clamp(Math.round(cfg.overhangMean + cfg.overhangSd * rng.nextGaussian()), 1, s);
+    cfg.overhangSd === 0
+      ? clamp(Math.round(cfg.overhangMean), -(nB - 1), s)
+      : clamp(Math.round(cfg.overhangMean + cfg.overhangSd * rng.nextGaussian()), -(nB - 1), s);
 
   // Lift the BOTTOM s cards as the small packet A; the top n-s stay as B.
-  const nB = n - s;
   for (let i = 0; i < s; i++) A[i] = deck[nB + i]!;
   for (let i = 0; i < nB; i++) B[i] = deck[i]!;
 
   const fromTop = cfg.remnantEnd === 'bottom';
   const posDep = cfg.positionDependence ?? 0;
 
-  // Build: the overhang block of A first (its head is the new top card),
-  // then run-length interleaving starting from B, consuming the small
-  // packet completely. For remnantEnd='bottom' we consume packet heads and
-  // build top-down; for remnantEnd='top' we consume packet tails and build
-  // bottom-up (A's tail becomes the new bottom card) — the remnant (B's
-  // unconsumed part) then sits on top. Within-packet order is preserved in
-  // both directions.
+  // Build: the overhang block first — from A if overhang > 0 (its head is
+  // the new top card), from B if overhang < 0 (the lifted packet seated
+  // below flush) — then run-length interleaving from the OTHER packet,
+  // consuming the small packet completely. For remnantEnd='bottom' we
+  // consume packet heads and build top-down; for remnantEnd='top' we
+  // consume packet tails and build bottom-up (the lead packet's tail
+  // becomes the new bottom card) — the remnant (B's unconsumed part) then
+  // sits on top. Within-packet order is preserved in both directions.
   let ia = 0;
   let ib = 0;
   let k = 0; // cards written
-  for (let i = 0; i < overhang && ia < s; i++, ia++, k++) {
-    scratch[fromTop ? k : n - 1 - k] = fromTop ? A[ia]! : A[s - 1 - ia]!;
+  if (overhang > 0) {
+    for (let i = 0; i < overhang && ia < s; i++, ia++, k++) {
+      scratch[fromTop ? k : n - 1 - k] = fromTop ? A[ia]! : A[s - 1 - ia]!;
+    }
+  } else if (overhang < 0) {
+    for (let i = 0; i < -overhang && ib < nB; i++, ib++, k++) {
+      scratch[fromTop ? k : n - 1 - k] = fromTop ? B[ib]! : B[nB - 1 - ib]!;
+    }
   }
-  let turnA = false; // interleaving starts from the big packet
+  // interleaving starts opposite the overhang block (or with A when flush)
+  let turnA = overhang <= 0;
   while (ia < s && ib < nB) {
     const t = k / n;
     const muEff = Math.max(1, cfg.mu * (1 + posDep * (2 * t - 1) * (2 * t - 1)));
+    const draw = (cap: number): number =>
+      cfg.runDist && cfg.runDist.length > 0
+        ? runLengthEmpirical(cfg.runDist, cap, rng)
+        : runLength(muEff, cap, rng);
     if (turnA) {
-      const len = runLength(muEff, s - ia, rng);
+      const len = draw(s - ia);
       for (let i = 0; i < len; i++, ia++, k++) {
         scratch[fromTop ? k : n - 1 - k] = fromTop ? A[ia]! : A[s - 1 - ia]!;
       }
     } else {
-      const len = runLength(muEff, nB - ib, rng);
+      const len = draw(nB - ib);
       for (let i = 0; i < len; i++, ib++, k++) {
         scratch[fromTop ? k : n - 1 - k] = fromTop ? B[ib]! : B[nB - 1 - ib]!;
       }
