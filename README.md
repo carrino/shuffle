@@ -6,7 +6,12 @@ randomness**, given that sleeved mash shuffles interleave much more cleanly
 than the standard GSR riffle model assumes. It is also the capture and
 analysis tool for real two-color shuffle observations.
 
-Live site: deployed to GitHub Pages by CI on every push to `main`.
+Live site: deployed to GitHub Pages by CI on every push to `main` (CI
+pushes the built site to the `gh-pages` branch; Pages source must be set to
+**Deploy from a branch → `gh-pages` /(root)**). Every open PR also gets a
+short-lived preview at `pr-preview/pr-<N>/` on the same branch — the
+`PR preview` workflow posts the link as a sticky PR comment and removes the
+preview when the PR closes.
 
 ## Why clean interleaving doesn't mix (GSR vs faro)
 
@@ -233,4 +238,5 @@ npm run ci         # exactly what CI runs
 - Seedable PRNG (xoshiro128**); `Math.random` is banned by an eslint rule.
 - Multi-thousand-trajectory runs (sweep, validation) happen in Web Workers.
 - Charts: uPlot (canvas). CI: typecheck + lint + tests + validation report +
-  build, deploys to Pages on `main`.
+  build; `main` deploys to the `gh-pages` branch, PRs deploy previews to
+  `gh-pages/pr-preview/pr-<N>/` (linked from a PR comment, cleaned on close).
