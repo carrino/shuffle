@@ -76,8 +76,8 @@ app.innerHTML = `
 </div>
 
 <div class="counts card">
-  <span>U <strong id="countU">0</strong></span>
   <span>T <strong id="countT2">0</strong></span>
+  <span>U <strong id="countU">0</strong></span>
   <span>total <strong id="countT">0</strong>/<span id="targetN">99</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
@@ -134,7 +134,13 @@ on the keyboard); <code>Backspace</code> undo; <code>Shift+Z</code>/<code>Shift+
   </div>
 </div>`;
 
-let seq: ('U' | 'T')[] = [];
+// In-progress taps survive an accidental reload (or a mid-capture deploy):
+// restored on load, saved on every change, cleared by Save & next / Clear.
+const INPROGRESS_KEY = 'mash-capture-inprogress';
+let seq: ('U' | 'T')[] = (() => {
+  const raw = localStorage.getItem(INPROGRESS_KEY) ?? '';
+  return /^[UT]*$/.test(raw) ? ([...raw] as ('U' | 'T')[]) : [];
+})();
 
 const el = (id: string) => document.getElementById(id)!;
 const input = (id: string) => el(id) as HTMLInputElement;
@@ -197,6 +203,7 @@ function record() {
 }
 
 function refresh(): void {
+  localStorage.setItem(INPROGRESS_KEY, seq.join(''));
   const r = seq.filter((c) => c === 'U').length;
   el('countU').textContent = String(r);
   el('countT2').textContent = String(seq.length - r);
