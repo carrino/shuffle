@@ -98,12 +98,11 @@ app.innerHTML = `
   curve, isolating what the interleave model itself contributes.
   Read the <strong>first chart</strong>: it plots how far the worst metric
   still is from uniform on a log scale, where each shuffle's halving is a
-  straight line and the certification margin is visible — on the raw
-  per-metric charts below, every curve reaches the gray ±2 SD band (single-deck
-  spread) within a few shuffles, but certification tests the trajectory
-  <em>mean</em> against a band 8× narrower — the <strong>green
-  stripe</strong> inside the gray band, with a <strong>dot on each
-  curve</strong> at the shuffle where that curve certifies. Mixedness is
+  straight line. Everywhere, the <strong>green stripe is the certification
+  target</strong> (ref ± 0.25·SD) and the <strong>dot on each curve</strong>
+  marks the shuffle where that curve certifies; charts window to the
+  interesting range (the sorted-deck transient and the converged tail are
+  cropped). Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
   ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
@@ -224,31 +223,49 @@ function resim(): void {
   for (const d of disposers) d();
   disposers.length = 0;
   const charts = document.getElementById('charts')!;
-  const x = Array.from({ length: K }, (_, i) => i + 1);
+  const fullX = Array.from({ length: K }, (_, i) => i + 1);
+
+  // Zoom each chart to the action: start a couple of shuffles before the
+  // log2 floor (or the earliest dot, whichever is first), end 4 past the
+  // last certification dot. Helpful beats complete — the sorted-deck
+  // transient and the long converged tail carry no information.
+  const chartWindow = (dots: (number | undefined)[]): { lo: number; hi: number; x: number[] } => {
+    const ds = dots.filter((d): d is number => d !== undefined);
+    const lo = Math.max(1, Math.min(ds.length ? Math.min(...ds) : log2Floor, log2Floor) - 2);
+    const hi = ds.length ? Math.min(K, Math.max(...ds) + 4) : K;
+    return { lo, hi, x: fullX.slice(lo - 1, hi) };
+  };
+  const win = (arr: ArrayLike<number>, w: { lo: number; hi: number }): number[] =>
+    Array.from(arr).slice(w.lo - 1, w.hi);
 
   // Headline chart: worst-metric standardized bias on a log scale — the
   // quantity certification actually gates on. Exponential decay renders as
   // a straight line; certification happens where a curve falls below the
   // c=0.25 margin (plus CI width) and stays.
   const worstEffect = (r: CurveResult): number[] =>
-    x.map((_, k) =>
+    fullX.map((_, k) =>
       Math.max(...METRIC_NAMES.map((m) => Math.abs(r.curves[m].effect[k]!))),
     );
+  const wAll = chartWindow([
+    certDot(result.cert.overall),
+    certDot(gsrDyn.cert.overall),
+    certDot(baseline.cert.overall),
+  ]);
   disposers.push(
     mountChart(charts, {
       title: 'Distance from random — worst metric (log scale)',
-      subtitle: `|trajectory mean − uniform| in single-deck SDs; dashes = certification margin c=0.25; gray = below measurement noise at T=${T}`,
-      x,
+      subtitle: `|trajectory mean − uniform| in single-deck SDs; green = certified zone (c=0.25), dot = first shuffle certified; the flat wiggle is simulation noise (T=${T})`,
+      x: wAll.x,
       xLabel: 'shuffles',
       logY: true,
       height: 240,
       series: [
-        { label: 'mash', colorVar: '--series-3', values: worstEffect(result), certAt: certDot(result.cert.overall) },
-        { label: 'GSR + your hands', colorVar: '--series-2', values: worstEffect(gsrDyn), certAt: certDot(gsrDyn.cert.overall) },
-        { label: 'GSR (fixed)', colorVar: '--series-1', values: worstEffect(baseline), certAt: certDot(baseline.cert.overall) },
+        { label: 'mash', colorVar: '--series-3', values: win(worstEffect(result), wAll), certAt: certDot(result.cert.overall) },
+        { label: 'GSR + your hands', colorVar: '--series-2', values: win(worstEffect(gsrDyn), wAll), certAt: certDot(gsrDyn.cert.overall) },
+        { label: 'GSR (fixed)', colorVar: '--series-1', values: win(worstEffect(baseline), wAll), certAt: certDot(baseline.cert.overall) },
       ],
       refLine: 0.25,
-      band: { lo: 1e-6, hi: 1 / Math.sqrt(T) },
+      innerBand: { lo: 1e-6, hi: 0.25 },
       vLines: [
         { x: log2Floor, label: 'floor' },
         { x: milestones.knee, label: 'M_KNEE' },
@@ -259,18 +276,22 @@ function resim(): void {
 
   for (const m of METRIC_NAMES) {
     const ref = uniformReference(deckN, m);
+    const w = chartWindow([
+      certDot(result.cert.perMetric[m]),
+      certDot(gsrDyn.cert.perMetric[m]),
+      certDot(baseline.cert.perMetric[m]),
+    ]);
     disposers.push(
       mountChart(charts, {
         title: METRIC_LABELS[m],
         subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR+hands ${fmtCert(gsrDyn.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
-        x,
+        x: w.x,
         xLabel: 'shuffles',
         series: [
-          { label: 'mash', colorVar: '--series-3', values: Array.from(result.curves[m].mean), certAt: certDot(result.cert.perMetric[m]) },
-          { label: 'GSR + your hands', colorVar: '--series-2', values: Array.from(gsrDyn.curves[m].mean), certAt: certDot(gsrDyn.cert.perMetric[m]) },
-          { label: 'GSR (fixed)', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean), certAt: certDot(baseline.cert.perMetric[m]) },
+          { label: 'mash', colorVar: '--series-3', values: win(result.curves[m].mean, w), certAt: certDot(result.cert.perMetric[m]) },
+          { label: 'GSR + your hands', colorVar: '--series-2', values: win(gsrDyn.curves[m].mean, w), certAt: certDot(gsrDyn.cert.perMetric[m]) },
+          { label: 'GSR (fixed)', colorVar: '--series-1', values: win(baseline.curves[m].mean, w), certAt: certDot(baseline.cert.perMetric[m]) },
         ],
-        band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
         innerBand: { lo: ref.mean - 0.25 * ref.sd, hi: ref.mean + 0.25 * ref.sd },
         refLine: ref.mean,
         vLines: [
