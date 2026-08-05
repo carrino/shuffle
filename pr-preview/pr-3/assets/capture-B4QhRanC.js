@@ -39,13 +39,15 @@ import{t as e}from"./nav-BGVi1r4O.js";import{n as t,t as n}from"./store-DVhmii2f
   <div class="meta">
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>
     <div><label for="technique">Technique</label><input id="technique" value="mash"></div>
-    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-100"></div>
+    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-99"></div>
     <div><label for="intended">Intended split</label><input id="intended" type="number" value="35" min="1" inputmode="numeric"></div>
     <div><label for="decksize">Deck size n</label>
       <select id="decksize">
         <option value="40">40 (draft)</option>
         <option value="60">60 (standard)</option>
-        <option value="100" selected>100 (commander)</option>
+        <option value="98">98 (commander, partners out)</option>
+        <option value="99" selected>99 (commander, general out)</option>
+        <option value="100">100 (full stack)</option>
       </select>
     </div>
   </div>
@@ -54,7 +56,7 @@ import{t as e}from"./nav-BGVi1r4O.js";import{n as t,t as n}from"./store-DVhmii2f
 <div class="counts card">
   <span>R <strong id="countR">0</strong></span>
   <span>B <strong id="countB">0</strong></span>
-  <span>total <strong id="countT">0</strong>/<span id="targetN">100</span></span>
+  <span>total <strong id="countT">0</strong>/<span id="targetN">99</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
 
