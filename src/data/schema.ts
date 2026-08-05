@@ -3,11 +3,11 @@
 // Capture protocol (documented for collectors — the flip method): cut the
 // deck the way you always do (lift the bottom packet), FLIP the lifted
 // packet to face the other way, and mash once the way you always mash.
-// Then input the cards TOP to BOTTOM: R = a flipped card (from the lifted
-// bottom packet), T = an unflipped card (from the top packet). The actual
-// split is the R count, the leading R run is the overhang (leading T run =
-// negative overhang), and every run boundary is a packet alternation.
-// Legacy records used B instead of T; readers accept both.
+// Then input the cards TOP to BOTTOM: U = a flipped, face-Up card (from
+// the lifted bottom packet), T = an unflipped card (from the Top packet).
+// The actual split is the U count, the leading U run is the overhang
+// (leading T run = negative overhang), and every run boundary is a packet
+// alternation. Legacy records used R/B for U/T; readers accept both.
 
 export interface MashRecord {
   /** ISO8601 timestamp of the observation */
@@ -20,7 +20,7 @@ export interface MashRecord {
   deck: string;
   /** the split the collector was aiming for (small packet size) */
   intendedSplit: number;
-  /** cards top→bottom, e.g. "RRTTRTT…" (R = bottom packet, T = top packet) */
+  /** cards top→bottom, e.g. "UUTTUTT…" (U = flipped/bottom packet, T = top packet) */
   string: string;
   /** deck size; must equal string.length */
   n: number;
@@ -65,8 +65,8 @@ export function validateRecord(raw: unknown): ValidationResult {
     if (typeof r.n === 'number' && s.length !== r.n) {
       errors.push(`string: length ${s.length} !== n (${r.n})`);
     }
-    if (!/^[RTB]+$/.test(s)) {
-      errors.push('string: contains characters other than R and T');
+    if (!/^[UTRB]+$/.test(s)) {
+      errors.push('string: contains characters other than U and T');
     }
   }
   if (
@@ -86,8 +86,8 @@ export function validateRecord(raw: unknown): ValidationResult {
       technique: r.technique as string,
       deck: r.deck as string,
       intendedSplit: r.intendedSplit as number,
-      // normalize legacy B (old two-color protocol) to T on the way in
-      string: (r.string as string).replace(/B/g, 'T'),
+      // normalize the legacy alphabet (R/B) to U/T on the way in
+      string: (r.string as string).replace(/R/g, 'U').replace(/B/g, 'T'),
       n: r.n as number,
     },
   };

@@ -1,5 +1,5 @@
 // Replay actual recorded shuffles. A flip-method capture string pins down the
-// EXACT permutation of that mash, not just its statistics: the R positions
+// EXACT permutation of that mash, not just its statistics: the U positions
 // receive the lifted bottom packet's cards in order, the T positions receive
 // the rest in order (the protocol keeps within-packet order — riffle-type
 // shuffles never reorder inside a packet). Sampling a random recorded
@@ -22,13 +22,13 @@ import type { MashRecord } from '../data/schema';
 export function permFromRecord(record: MashRecord): Int16Array {
   const s = record.string;
   const n = s.length;
-  const nR = [...s].filter((c) => c === 'R').length;
+  const nR = [...s].filter((c) => c === 'U').length;
   const perm = new Int16Array(n);
   let ia = 0;
   let ib = 0;
   for (let i = 0; i < n; i++) {
-    if (s[i] === 'R') {
-      perm[i] = n - nR + ia; // R block = bottom nR cards, order preserved
+    if (s[i] === 'U') {
+      perm[i] = n - nR + ia; // U block = bottom nR cards, order preserved
       ia++;
     } else {
       perm[i] = ib; // T block = top n-nR cards, order preserved

@@ -1,16 +1,16 @@
 // Fit mash parameters from real flip-method observation strings.
 //
 // Identifiability notes (what a single post-mash color string can and cannot
-// tell you, given the capture protocol: R marks the lifted BOTTOM packet,
-// T the top packet; the mash lifts the R packet and mashes it
-// into the top, so the string normally STARTS with R):
+// tell you, given the capture protocol: U marks the lifted BOTTOM packet,
+// T the top packet; the mash lifts the U packet and mashes it
+// into the top, so the string normally STARTS with U):
 // - Run lengths ARE directly observable: packets are identified by color and
 //   model runs alternate packets, so color runs = model runs, except that
 //   the big packet's remnant merges with the zone's final T run and the
 //   leading run is the overhang block (not mu-driven). We therefore exclude
-//   the terminal run at the remnant end AND the leading small-color run
+//   the terminal run at the remnant end AND the leading lifted-side run
 //   from mu fitting.
-// - Actual split = R count (the whole lifted packet is R).
+// - Actual split = U count (the whole lifted packet is flipped).
 // - Remnant end/size = the longest terminal T run.
 // - The OVERHANG is directly observable and SIGNED: the leading run at the
 //   non-remnant end is the overhang block — small-color run = +overhang
@@ -40,14 +40,14 @@ export interface StringAnalysis {
   runs: number[];
   /** run lengths with their zone position t in 0..1 (for position dependence) */
   runPositions: { length: number; t: number }[];
-  /** signed overhang: leading R run = +len, leading T run = -len */
+  /** signed overhang: leading U run = +len, leading T run = -len */
   overhang: number;
 }
 
 export function analyzeString(record: MashRecord): StringAnalysis {
   const s = record.string;
   const n = s.length;
-  const actualSplit = [...s].filter((c) => c === 'R').length;
+  const actualSplit = [...s].filter((c) => c === 'U').length;
 
   // terminal T runs at each end
   let topB = 0;
@@ -81,7 +81,7 @@ export function analyzeString(record: MashRecord): StringAnalysis {
   // seating block either way, so it never counts toward mu.
   const leadIdx = remnantEnd === 'bottom' ? 0 : allRuns.length - 1;
   const lead = allRuns[leadIdx];
-  const overhang = lead === undefined ? 0 : lead.color === 'R' ? lead.length : -lead.length;
+  const overhang = lead === undefined ? 0 : lead.color === 'U' ? lead.length : -lead.length;
   const interior = allRuns.filter((_, idx) => idx !== leadIdx);
 
   return {

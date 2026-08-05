@@ -54,8 +54,8 @@ via GSR drops. The mechanic matters:
 many shuffles assuming *perfect interleaving* (`mu=1`), where the only
 randomness is the bottom-cut size and the overhang? Fitted real-world clump
 rates then adjust the answer. All three fitted parameters are directly
-observable in the flip-method capture data: the split is the R count, the
-signed overhang is the leading run (R = +, T = −), and the interleave
+observable in the flip-method capture data: the split is the U count, the
+signed overhang is the leading run (U = +, T = −), and the interleave
 randomness is the interior run-length histogram — which `mash()` can sample
 from directly (`MashConfig.runDist`), so simulation uses the real clump
 shape rather than just its geometric-mean approximation.
@@ -198,18 +198,18 @@ with metric curves for GSR and faro plus the exact-TV overlay.
 
 ## Data schema and the git-append workflow
 
-Real observations are "R"/"T" strings input top-to-bottom after a flip-method
-mash (cut, flip the lifted packet, mash; R = flipped/bottom packet, T =
-unflipped/top packet; legacy records used "B" for T)
+Real observations are "U"/"T" strings input top-to-bottom after a flip-method
+mash (cut, flip the lifted packet, mash; U = flipped face-Up/bottom packet,
+T = unflipped/Top packet; legacy records used "R"/"B" for U/T)
 after one mash. One JSON line per observation in `data/mashes.jsonl`
 (append-only):
 
 ```json
-{"ts":"2026-08-04T12:00:00Z","collector":"john","technique":"mash","deck":"sleeved-100","intendedSplit":30,"n":100,"string":"RRTTRT…"}
+{"ts":"2026-08-04T12:00:00Z","collector":"john","technique":"mash","deck":"sleeved-100","intendedSplit":30,"n":100,"string":"UUTTUT…"}
 ```
 
 `validate()` (in `src/data/schema.ts`) requires `string.length === n` and
-characters ⊆ {R, T}. The `/capture` page is a phone-friendly tapper (big R/T
+characters ⊆ {U, T}. The `/capture` page is a phone-friendly tapper (big U/T
 buttons, undo, paste mode) that emits a validated JSON line to copy or
 download; appending it to `data/mashes.jsonl` happens via git commit, so
 writes stay serialized through review until a real endpoint exists.
