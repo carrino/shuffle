@@ -15,6 +15,8 @@ export interface SeriesSpec {
   /** draw point markers (used for measured-vs-exact overlays) */
   points?: boolean;
   width?: number;
+  /** x value where this series certifies — drawn as a filled dot on the curve */
+  certAt?: number;
 }
 
 export interface ChartSpec {
@@ -27,6 +29,8 @@ export interface ChartSpec {
   yLabel?: string;
   /** horizontal reference band (e.g. uniform mean ± 2 SD) */
   band?: { lo: number; hi: number; label?: string };
+  /** narrow inner band (e.g. the certification margin ref ± 0.25 SD) */
+  innerBand?: { lo: number; hi: number };
   /** horizontal reference line (e.g. uniform mean) */
   refLine?: number;
   /** labeled vertical reference lines (e.g. M_FAIR, log2 floor) */
@@ -96,7 +100,15 @@ function buildPlot(m: Mounted): void {
       },
       {
         stroke: axisColor,
-        grid: { stroke: gridColor, width: 1 },
+        // log scales draw a gridline per minor tick (1..9 each decade),
+        // which reads as visual noise — keep decade lines only
+        grid: {
+          stroke: gridColor,
+          width: 1,
+          ...(spec.logY
+            ? { filter: (_u: uPlot, splits: number[]) => splits.map((v) => (Math.abs(Math.log10(v) % 1) < 1e-9 ? v : null)) }
+            : {}),
+        },
         ticks: { stroke: gridColor },
         font: axisFont,
         label: spec.yLabel,
@@ -117,6 +129,15 @@ function buildPlot(m: Mounted): void {
             const yHi = u.valToPos(band.hi, 'y', true);
             ctx.save();
             ctx.fillStyle = cssVar('--band');
+            ctx.fillRect(xMin, Math.min(yLo, yHi), xMax - xMin, Math.abs(yLo - yHi));
+            ctx.restore();
+          }
+          if (spec.innerBand) {
+            const yLo = u.valToPos(spec.innerBand.lo, 'y', true);
+            const yHi = u.valToPos(spec.innerBand.hi, 'y', true);
+            ctx.save();
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = cssVar('--good');
             ctx.fillRect(xMin, Math.min(yLo, yHi), xMax - xMin, Math.abs(yLo - yHi));
             ctx.restore();
           }
@@ -152,6 +173,31 @@ function buildPlot(m: Mounted): void {
             });
             ctx.restore();
           }
+        },
+      ],
+      // certification dots, drawn on top of the series
+      draw: [
+        (u) => {
+          const ctx = u.ctx;
+          const xsArr = Array.from(spec.x as ArrayLike<number>);
+          spec.series.forEach((s, i) => {
+            if (s.certAt === undefined) return;
+            const idx = xsArr.indexOf(s.certAt);
+            if (idx < 0) return;
+            const val = (u.data[i + 1] as (number | null)[])[idx];
+            if (val == null) return;
+            const px = u.valToPos(xsArr[idx]!, 'x', true);
+            const py = u.valToPos(val, 'y', true);
+            ctx.save();
+            ctx.fillStyle = cssVar(s.colorVar);
+            ctx.strokeStyle = cssVar('--surface-1');
+            ctx.lineWidth = 2 * devicePixelRatio;
+            ctx.beginPath();
+            ctx.arc(px, py, 5.5 * devicePixelRatio, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          });
         },
       ],
     },

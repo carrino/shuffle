@@ -101,8 +101,9 @@ app.innerHTML = `
   straight line and the certification margin is visible — on the raw
   per-metric charts below, every curve reaches the gray ±2 SD band (single-deck
   spread) within a few shuffles, but certification tests the trajectory
-  <em>mean</em> against a band 8× narrower than that, too thin to see at raw
-  scale. Mixedness is
+  <em>mean</em> against a band 8× narrower — the <strong>green
+  stripe</strong> inside the gray band, with a <strong>dot on each
+  curve</strong> at the shuffle where that curve certifies. Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
   ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
@@ -242,9 +243,9 @@ function resim(): void {
       logY: true,
       height: 240,
       series: [
-        { label: 'mash', colorVar: '--series-3', values: worstEffect(result) },
-        { label: 'GSR + your hands', colorVar: '--series-2', values: worstEffect(gsrDyn) },
-        { label: 'GSR (fixed)', colorVar: '--series-1', values: worstEffect(baseline) },
+        { label: 'mash', colorVar: '--series-3', values: worstEffect(result), certAt: certDot(result.cert.overall) },
+        { label: 'GSR + your hands', colorVar: '--series-2', values: worstEffect(gsrDyn), certAt: certDot(gsrDyn.cert.overall) },
+        { label: 'GSR (fixed)', colorVar: '--series-1', values: worstEffect(baseline), certAt: certDot(baseline.cert.overall) },
       ],
       refLine: 0.25,
       band: { lo: 1e-6, hi: 1 / Math.sqrt(T) },
@@ -265,11 +266,12 @@ function resim(): void {
         x,
         xLabel: 'shuffles',
         series: [
-          { label: 'mash', colorVar: '--series-3', values: Array.from(result.curves[m].mean) },
-          { label: 'GSR + your hands', colorVar: '--series-2', values: Array.from(gsrDyn.curves[m].mean) },
-          { label: 'GSR (fixed)', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean) },
+          { label: 'mash', colorVar: '--series-3', values: Array.from(result.curves[m].mean), certAt: certDot(result.cert.perMetric[m]) },
+          { label: 'GSR + your hands', colorVar: '--series-2', values: Array.from(gsrDyn.curves[m].mean), certAt: certDot(gsrDyn.cert.perMetric[m]) },
+          { label: 'GSR (fixed)', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean), certAt: certDot(baseline.cert.perMetric[m]) },
         ],
         band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
+        innerBand: { lo: ref.mean - 0.25 * ref.sd, hi: ref.mean + 0.25 * ref.sd },
         refLine: ref.mean,
         vLines: [
           { x: log2Floor, label: 'floor' },
@@ -318,6 +320,11 @@ document.getElementById('sl-mu')!.addEventListener('input', () => {
 
 function fmtCert(s: CertStatus): string {
   return s.status === 'certified' ? String(s.k) : s.status === 'not-certified' ? 'never' : 'cannot certify';
+}
+
+/** x position of a certification dot, or undefined when never certified */
+function certDot(s: CertStatus): number | undefined {
+  return s.status === 'certified' ? s.k : undefined;
 }
 
 resim();
