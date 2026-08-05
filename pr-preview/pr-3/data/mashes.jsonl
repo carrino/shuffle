@@ -2,3 +2,6 @@
 {"ts":"2026-08-04T22:05:24.082Z","collector":"carrino","technique":"mash","deck":"sleeved-40","intendedSplit":17,"string":"RRBRRRBRBRBRBRBRBRBRBRRBBRBRBBBBBBBBBBBB","n":40}
 {"ts":"2026-08-04T22:06:38.633Z","collector":"carrino","technique":"mash","deck":"sleeved-40","intendedSplit":17,"string":"RRRRBRRBRRRBRBRBRBRBRBRRBBRBRBBBBBBBBBBB","n":40}
 {"ts":"2026-08-04T22:08:14.446Z","collector":"carrino","technique":"mash","deck":"sleeved-40","intendedSplit":17,"string":"RRRRRRBRBRRBRBRBRBRBRBBRBBBBBBBBBBBBBBBB","n":40}
+{"ts":"2026-08-05T04:14:35.488Z","collector":"carrino","technique":"mash","deck":"sleeved-100","intendedSplit":35,"string":"RRRRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBRBBRBRRBRBRBRBRBRBRRBBRBRBRBBBBBBBBBBBBBBBBBBBB","n":100}
+{"ts":"2026-08-05T04:17:48.205Z","collector":"carrino","technique":"mash","deck":"sleeved-100","intendedSplit":30,"string":"RRRRRBRRBRBRBRBRBRBRBBRBRBRBRBRBBRRBBRBBRRBBRRBBRRBBRBRBBRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","n":100}
+{"ts":"2026-08-05T04:20:19.973Z","collector":"carrino","technique":"mash","deck":"sleeved-100","intendedSplit":30,"string":"RRRRRRBRRBRBRBRBRBRBRBRBRBBRBRBRBRBRBBRRBBRBRBRBRBRBRBBRRBBRBRBRBRBRBBRBRBBBBBBBBBBBBBBBBBBBBBBBBBBB","n":100}
