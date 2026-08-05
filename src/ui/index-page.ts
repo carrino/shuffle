@@ -10,6 +10,9 @@ import { gsr } from '../sim/operators';
 import { makeMashShuffle, type MashConfig } from '../sim/mash';
 import { uniformReference, METRIC_NAMES, type MetricName } from '../sim/metrics';
 import { theoryMilestones, type AnchoredDeckSize } from '../sim/anchors';
+import { fitRecords } from '../sim/fit';
+import { makeStaticStore } from '../data/store';
+import type { MashRecord } from '../data/schema';
 
 const K = 32;
 const T = 1000;
@@ -123,6 +126,11 @@ app.innerHTML = `
       <option value="100">100 (commander)</option>
     </select>
   </label>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button id="loadFit" class="secondary">Use measured hands</button>
+    <select id="fitWho" style="display:none"></select>
+    <span class="muted" id="fitInfo">fit the sliders + clump distribution from the recorded shuffles in data/mashes.jsonl</span>
+  </div>
   <div class="sliders" id="sliders"></div>
 </div>
 <div class="card readout" id="readout"></div>
@@ -151,6 +159,66 @@ deckSel.addEventListener('change', () => {
   split.value = String(Math.max(5, Math.min(maxCut(deckN), Math.round((Number(split.value) * deckN) / oldN))));
   schedule();
 });
+
+// "Use measured hands": fetch the recorded shuffles, fit the chosen
+// collector, and drive the sliders + clump distribution from the fit. The
+// cut scales proportionally when the explore deck differs from the recorded
+// decks; the overhang is a physical block size and stays absolute.
+let dataRecords: MashRecord[] | null = null;
+
+function setSlider(key: string, value: number): void {
+  const el = document.getElementById(`sl-${key}`) as HTMLInputElement;
+  const v = Math.max(Number(el.min), Math.min(Number(el.max), value));
+  el.value = String(Math.round(v / Number(el.step)) * Number(el.step));
+}
+
+function applyFit(): void {
+  if (!dataRecords || dataRecords.length === 0) return;
+  const who = (document.getElementById('fitWho') as HTMLSelectElement).value;
+  const recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
+  if (recs.length === 0) return;
+  const fit = fitRecords(who, recs);
+  const avgN = recs.reduce((s, r) => s + r.n, 0) / recs.length;
+  const scale = deckN / avgN;
+  setSlider('splitMean', fit.config.splitMean * scale);
+  setSlider('splitSd', fit.config.splitSd * scale);
+  setSlider('overhangMean', fit.config.overhangMean);
+  setSlider('overhangSd', fit.config.overhangSd);
+  setSlider('positionDependence', fit.config.positionDependence ?? 0);
+  setSlider('mu', fit.config.mu);
+  runDist = fit.config.runDist ? [...fit.config.runDist] : null;
+  document.getElementById('fitInfo')!.textContent =
+    `${fit.recordCount} record${fit.recordCount === 1 ? '' : 's'} by ${who}` +
+    (Math.abs(scale - 1) > 0.01
+      ? ` (deck n≈${Math.round(avgN)}; cut scaled ×${scale.toFixed(2)} to n=${deckN})`
+      : '') +
+    ` — clump dist applied`;
+  schedule();
+}
+
+document.getElementById('loadFit')!.addEventListener('click', () => {
+  void makeStaticStore()
+    .read()
+    .then((r) => {
+      dataRecords = r.records;
+      const info = document.getElementById('fitInfo')!;
+      if (r.records.length === 0) {
+        info.textContent = 'no records in data/mashes.jsonl yet — tap some out on /capture';
+        return;
+      }
+      const collectors = [...new Set(r.records.map((rec) => rec.collector))];
+      const sel = document.getElementById('fitWho') as HTMLSelectElement;
+      sel.innerHTML =
+        (collectors.length > 1 ? `<option value="POOLED">everyone (pooled)</option>` : '') +
+        collectors.map((c) => `<option value="${c}">${c}</option>`).join('');
+      sel.style.display = '';
+      applyFit();
+    })
+    .catch(() => {
+      document.getElementById('fitInfo')!.textContent = 'could not load data/mashes.jsonl';
+    });
+});
+document.getElementById('fitWho')!.addEventListener('change', applyFit);
 
 function currentConfig(): MashConfig {
   const get = (k: string) => Number((document.getElementById(`sl-${k}`) as HTMLInputElement).value);
