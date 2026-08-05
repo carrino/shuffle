@@ -50,14 +50,14 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DhkOBsWw
   <div class="meta">
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>
     <div><label for="technique">Technique</label><input id="technique" value="mash"></div>
-    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-99"></div>
-    <div><label for="intended">Intended split</label><input id="intended" type="number" value="35" min="1" inputmode="numeric"></div>
+    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-60"></div>
+    <div><label for="intended">Intended split</label><input id="intended" type="number" value="21" min="1" inputmode="numeric"></div>
     <div><label for="decksize">Deck size n</label>
       <select id="decksize">
         <option value="40">40 (draft)</option>
-        <option value="60">60 (standard)</option>
+        <option value="60" selected>60 (standard)</option>
         <option value="98">98 (2 partners)</option>
-        <option value="99" selected>99 (commander)</option>
+        <option value="99">99 (commander)</option>
         <option value="100">100 (full stack)</option>
       </select>
     </div>
@@ -67,7 +67,7 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DhkOBsWw
 <div class="counts card">
   <span>T <strong id="countT2">0</strong></span>
   <span>U <strong id="countU">0</strong></span>
-  <span>total <strong id="countT">0</strong>/<span id="targetN">99</span></span>
+  <span>total <strong id="countT">0</strong>/<span id="targetN">60</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
 
