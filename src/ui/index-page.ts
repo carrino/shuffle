@@ -49,7 +49,7 @@ const num = (k: string, d: number) => {
 // deck size: 60 (standard) or 100 (commander); everything downstream —
 // uniform references, GSR baseline, theory milestones, log2 floor — is
 // parametric in n, with exact TV anchors baked in for both sizes
-const nParam = num('n', 100);
+const nParam = num('n', 60);
 let deckN: AnchoredDeckSize = nParam === 40 ? 40 : nParam === 60 ? 60 : 100;
 
 // A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
