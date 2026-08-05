@@ -1,17 +1,17 @@
-// Fit mash parameters from real two-color observation strings.
+// Fit mash parameters from real flip-method observation strings.
 //
 // Identifiability notes (what a single post-mash color string can and cannot
-// tell you, given the capture protocol: the R block is the BOTTOM
-// intended-split cards, B on top; the mash lifts the R block and mashes it
+// tell you, given the capture protocol: R marks the lifted BOTTOM packet,
+// T the top packet; the mash lifts the R packet and mashes it
 // into the top, so the string normally STARTS with R):
 // - Run lengths ARE directly observable: packets are identified by color and
 //   model runs alternate packets, so color runs = model runs, except that
-//   the big packet's remnant merges with the zone's final B run and the
+//   the big packet's remnant merges with the zone's final T run and the
 //   leading run is the overhang block (not mu-driven). We therefore exclude
 //   the terminal run at the remnant end AND the leading small-color run
 //   from mu fitting.
-// - Actual split = R count (the whole small packet is red).
-// - Remnant end/size = the longest terminal B run.
+// - Actual split = R count (the whole lifted packet is R).
+// - Remnant end/size = the longest terminal T run.
 // - The OVERHANG is directly observable and SIGNED: the leading run at the
 //   non-remnant end is the overhang block — small-color run = +overhang
 //   (lifted packet's head above the mesh), big-color run = -overhang (the
@@ -33,14 +33,14 @@ export interface StringAnalysis {
   /** actual small-packet size = R count */
   actualSplit: number;
   intendedSplit: number;
-  /** 'top' | 'bottom' — end with the longest terminal B run */
+  /** 'top' | 'bottom' — end with the longest terminal T run */
   remnantEnd: 'top' | 'bottom';
   remnantSize: number;
   /** interior run lengths (zone only; remnant and overhang run excluded) */
   runs: number[];
   /** run lengths with their zone position t in 0..1 (for position dependence) */
   runPositions: { length: number; t: number }[];
-  /** signed overhang: leading R run = +len, leading B run = -len */
+  /** signed overhang: leading R run = +len, leading T run = -len */
   overhang: number;
 }
 
@@ -49,11 +49,11 @@ export function analyzeString(record: MashRecord): StringAnalysis {
   const n = s.length;
   const actualSplit = [...s].filter((c) => c === 'R').length;
 
-  // terminal B runs at each end
+  // terminal T runs at each end
   let topB = 0;
-  while (topB < n && s[topB] === 'B') topB++;
+  while (topB < n && s[topB] === 'T') topB++;
   let botB = 0;
-  while (botB < n && s[n - 1 - botB] === 'B') botB++;
+  while (botB < n && s[n - 1 - botB] === 'T') botB++;
   const remnantEnd: 'top' | 'bottom' = topB > botB ? 'top' : 'bottom';
   const remnantSize = Math.max(topB, botB);
 
@@ -77,7 +77,7 @@ export function analyzeString(record: MashRecord): StringAnalysis {
   }
 
   // the SIGNED overhang is the run at the NON-remnant end: R = the lifted
-  // packet's head above the mesh (+), B = seated below flush (-). It is the
+  // packet's head above the mesh (+), T = seated below flush (-). It is the
   // seating block either way, so it never counts toward mu.
   const leadIdx = remnantEnd === 'bottom' ? 0 : allRuns.length - 1;
   const lead = allRuns[leadIdx];

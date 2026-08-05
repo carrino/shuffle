@@ -32,7 +32,7 @@ function synthesize(cfg: MashConfig, n: number, seed: number, count: number, col
     const draw = mash(deck, scratch, rng, cfg);
     let s = '';
     for (let j = 0; j < n; j++) {
-      s += deck[j]! >= n - draw.split ? 'R' : 'B';
+      s += deck[j]! >= n - draw.split ? 'R' : 'T';
     }
     records.push({ ...rec(s, Math.round(cfg.splitMean), collector), n });
   }
@@ -40,37 +40,37 @@ function synthesize(cfg: MashConfig, n: number, seed: number, count: number, col
 }
 
 describe('analyzeString (hand-checked)', () => {
-  it('splits runs, remnant, overhang and counts on RBRBBB', () => {
-    const a = analyzeString(rec('RBRBBB', 2));
+  it('splits runs, remnant, overhang and counts on RTRTTT', () => {
+    const a = analyzeString(rec('RTRTTT', 2));
     expect(a.actualSplit).toBe(2);
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(3);
     expect(a.overhang).toBe(1); // leading R run
-    expect(a.runs).toEqual([1, 1]); // zone = RBR minus the overhang run
+    expect(a.runs).toEqual([1, 1]); // zone = RTR minus the overhang run
   });
 
   it('reads the overhang as the leading small-color run', () => {
-    const a = analyzeString(rec('RRRBRBBBBB', 4));
+    const a = analyzeString(rec('RRRTRTTTTT', 4));
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(5);
     expect(a.overhang).toBe(3); // RRR before the mesh
-    expect(a.runs).toEqual([1, 1]); // zone = RRRBR minus overhang
+    expect(a.runs).toEqual([1, 1]); // zone = RRRTR minus overhang
   });
 
   it('detects a top remnant on BBBBRBRB with a signed lead at the bottom', () => {
-    const a = analyzeString(rec('BBBBRBRB', 2));
+    const a = analyzeString(rec('TTTTRTRT', 2));
     expect(a.remnantEnd).toBe('top');
     expect(a.remnantSize).toBe(4);
     expect(a.overhang).toBe(-1); // bottom end leads with a single B
-    expect(a.runs).toEqual([1, 1, 1]); // zone = RBRB minus the lead run
+    expect(a.runs).toEqual([1, 1, 1]); // zone = RTRT minus the lead run
   });
 
   it('a big-color lead reads as NEGATIVE overhang (seated below flush)', () => {
-    const a = analyzeString(rec('BBRRBRBBBB', 3));
+    const a = analyzeString(rec('TTRRTRTTTT', 3));
     expect(a.remnantEnd).toBe('bottom');
     expect(a.remnantSize).toBe(4);
     expect(a.overhang).toBe(-2); // BB on top before the first lifted card
-    expect(a.runs).toEqual([2, 1, 1]); // zone = BBRRBR minus the lead run
+    expect(a.runs).toEqual([2, 1, 1]); // zone = TTRRTR minus the lead run
   });
 });
 

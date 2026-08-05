@@ -8,7 +8,7 @@ const good = {
   technique: 'mash',
   deck: 'sleeved-100',
   intendedSplit: 30,
-  string: 'RB'.repeat(15) + 'B'.repeat(70),
+  string: 'RT'.repeat(15) + 'T'.repeat(70),
   n: 100,
 };
 
@@ -19,15 +19,15 @@ describe('schema.validateRecord', () => {
   });
 
   it('rejects string length !== n', () => {
-    const r = validateRecord({ ...good, string: 'RB' });
+    const r = validateRecord({ ...good, string: 'RT' });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.join()).toContain('length');
   });
 
-  it('rejects characters outside {R,B}', () => {
+  it('rejects characters outside {R,T}', () => {
     const r = validateRecord({ ...good, string: 'RX'.repeat(50) });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.join()).toContain('other than R and B');
+    if (!r.ok) expect(r.errors.join()).toContain('other than R and T');
   });
 
   it('rejects missing fields, bad timestamps, bad n', () => {
@@ -36,7 +36,7 @@ describe('schema.validateRecord', () => {
     expect(validateRecord({ ...good, n: 100.5 }).ok).toBe(false);
     expect(validateRecord({ ...good, intendedSplit: 100 }).ok).toBe(false);
     expect(validateRecord(null).ok).toBe(false);
-    expect(validateRecord('RRBB').ok).toBe(false);
+    expect(validateRecord('RRTT').ok).toBe(false);
   });
 
   it('toJsonLine roundtrips through validation', () => {
@@ -55,7 +55,7 @@ describe('store.parseJsonl', () => {
     const text = [
       JSON.stringify(good),
       'not json at all {',
-      JSON.stringify({ ...good, string: 'RRB' }),
+      JSON.stringify({ ...good, string: 'RRT' }),
       '',
       JSON.stringify({ ...good, collector: 'ana' }),
     ].join('\n');

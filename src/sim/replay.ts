@@ -1,6 +1,6 @@
-// Replay actual recorded shuffles. A two-color capture string pins down the
+// Replay actual recorded shuffles. A flip-method capture string pins down the
 // EXACT permutation of that mash, not just its statistics: the R positions
-// receive the lifted bottom packet's cards in order, the B positions receive
+// receive the lifted bottom packet's cards in order, the T positions receive
 // the rest in order (the protocol keeps within-packet order — riffle-type
 // shuffles never reorder inside a packet). Sampling a random recorded
 // permutation each pass is a bootstrap simulation of the collector's real
@@ -31,7 +31,7 @@ export function permFromRecord(record: MashRecord): Int16Array {
       perm[i] = n - nR + ia; // R block = bottom nR cards, order preserved
       ia++;
     } else {
-      perm[i] = ib; // B block = top n-nR cards, order preserved
+      perm[i] = ib; // T block = top n-nR cards, order preserved
       ib++;
     }
   }

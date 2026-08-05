@@ -1,5 +1,5 @@
-// /capture — phone-friendly recorder for real two-color mash observations.
-// Big R/B tap targets, undo, paste mode, live validation, JSON-line output
+// /capture — phone-friendly recorder for real mash observations (flip method).
+// Big R/T tap targets, undo, paste mode, live validation, JSON-line output
 // with copy/download. Writes go through the store interface (today: a line
 // you append to data/mashes.jsonl via git; later: an HTTP endpoint).
 
@@ -21,7 +21,7 @@ app.innerHTML = `
     touch-action: manipulation; -webkit-user-select: none; user-select: none;
   }
   .tapper .r { background: var(--series-2); }
-  .tapper .b { background: var(--series-1); }
+  .tapper .t { background: var(--series-1); }
   .tapper button:active { filter: brightness(1.15); }
   .seq {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -30,7 +30,7 @@ app.innerHTML = `
     padding: 10px; min-height: 3.2em; font-size: 0.95rem;
   }
   .seq .r { color: var(--series-2); font-weight:700 }
-  .seq .b { color: var(--series-1); }
+  .seq .t { color: var(--series-1); }
   .counts { display:flex; gap:16px; font-variant-numeric: tabular-nums;
     font-size: 1.05rem; margin: 8px 0; align-items: baseline; flex-wrap: wrap; }
   .counts strong { font-size: 1.5rem; }
@@ -46,11 +46,12 @@ app.innerHTML = `
     <p><strong>The flip method — no special sleeves needed.</strong>
     Cut the deck the way you always do (lift the bottom packet), then
     <strong>flip the lifted packet over</strong> so its cards face the other
-    way, and mash once <em>the way you always mash</em>. Fan the deck and tap
-    <strong>top to bottom</strong>: flipped cards are
-    <strong style="color:var(--series-2)">R</strong>, unflipped are
-    <strong style="color:var(--series-1)">B</strong>. Un-flip afterwards —
-    they're easy to spot.</p>
+    way, and mash once <em>the way you always mash</em>. Then input the cards
+    <strong>top to bottom</strong>, dealing one at a time:
+    <strong style="color:var(--series-2)">R</strong> = a flipped card (from
+    the bottom packet), <strong style="color:var(--series-1)">T</strong> = an
+    unflipped card (from the top packet). Un-flip afterwards — they're easy
+    to spot.</p>
     <p>Don't aim for a special cut — the natural cut is part of what's being
     measured (the R count <em>is</em> your actual cut size; "intended split"
     is just what you were going for). Ugly mashes are good data: record what
@@ -75,30 +76,30 @@ app.innerHTML = `
 
 <div class="counts card">
   <span>R <strong id="countR">0</strong></span>
-  <span>B <strong id="countB">0</strong></span>
+  <span>T <strong id="countT2">0</strong></span>
   <span>total <strong id="countT">0</strong>/<span id="targetN">99</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
 
 <div class="tapper">
-  <button class="b" id="tapB">B</button>
+  <button class="t" id="tapT">T</button>
   <button class="r" id="tapR">R</button>
 </div>
 
 <div class="rowbtns">
   <button class="secondary" id="undo">← Undo</button>
   <button class="secondary" id="clear">Clear</button>
-  <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
+  <button class="secondary" id="fillT" style="color:var(--series-1)">Fill rest T</button>
   <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
 <p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
-or <code>b</code>/<code>r</code> tap a card (left = B, right = R);
+or <code>t</code>/<code>r</code> tap a card (left = T, right = R);
 <code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
-(or <code>Shift+B</code>/<code>Shift+R</code>) fill the remainder with one color;
+(or <code>Shift+T</code>/<code>Shift+R</code>) fill the remainder with one side;
 <code>Enter</code> saves a complete record and starts the next.</p>
 <div id="pasteArea" style="display:none">
-  <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
+  <label for="pasteInput">Paste R/T string (spaces/newlines ignored, lowercase ok; legacy B reads as T)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
   <div class="rowbtns"><button id="pasteApply">Use this string</button></div>
 </div>
@@ -132,7 +133,7 @@ or <code>b</code>/<code>r</code> tap a card (left = B, right = R);
   </div>
 </div>`;
 
-let seq: ('R' | 'B')[] = [];
+let seq: ('R' | 'T')[] = [];
 
 const el = (id: string) => document.getElementById(id)!;
 const input = (id: string) => el(id) as HTMLInputElement;
@@ -197,7 +198,7 @@ function record() {
 function refresh(): void {
   const r = seq.filter((c) => c === 'R').length;
   el('countR').textContent = String(r);
-  el('countB').textContent = String(seq.length - r);
+  el('countT2').textContent = String(seq.length - r);
   el('countT').textContent = String(seq.length);
   el('targetN').textContent = input('decksize').value;
   el('seq').innerHTML = seq
@@ -237,7 +238,7 @@ function refresh(): void {
   }
 }
 
-function tap(c: 'R' | 'B'): void {
+function tap(c: 'R' | 'T'): void {
   seq.push(c);
   refresh();
 }
@@ -246,17 +247,17 @@ function undo(): void {
   refresh();
 }
 /** Fill the rest of the deck with one color — the ordered remnant block. */
-function fillRest(c: 'R' | 'B'): void {
+function fillRest(c: 'R' | 'T'): void {
   const n = Number(input('decksize').value);
   if (!Number.isInteger(n) || n < 2) return;
   while (seq.length < n) seq.push(c);
   refresh();
 }
 el('tapR').addEventListener('click', () => tap('R'));
-el('tapB').addEventListener('click', () => tap('B'));
+el('tapT').addEventListener('click', () => tap('T'));
 el('undo').addEventListener('click', undo);
 el('fillR').addEventListener('click', () => fillRest('R'));
-el('fillB').addEventListener('click', () => fillRest('B'));
+el('fillT').addEventListener('click', () => fillRest('T'));
 
 // Keyboard entry (desktop): ignore keystrokes aimed at form fields.
 document.addEventListener('keydown', (e) => {
@@ -264,9 +265,9 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key;
-  if (key === 'b' || key === 'z' || key === 'ArrowLeft') tap('B');
+  if (key === 't' || key === 'z' || key === 'ArrowLeft') tap('T');
   else if (key === 'r' || key === 'x' || key === 'ArrowRight') tap('R');
-  else if (key === 'B' || key === 'Z') fillRest('B');
+  else if (key === 'T' || key === 'Z') fillRest('T');
   else if (key === 'R' || key === 'X') fillRest('R');
   else if (key === 'Backspace' || key === 'u') undo();
   else if (key === 'Enter') saveAndNext();
@@ -286,8 +287,9 @@ el('pasteToggle').addEventListener('click', () => {
 el('pasteApply').addEventListener('click', () => {
   const raw = (el('pasteInput') as HTMLTextAreaElement).value
     .toUpperCase()
-    .replace(/[^RB]/g, '');
-  seq = [...raw] as ('R' | 'B')[];
+    .replace(/B/g, 'T')
+    .replace(/[^RT]/g, '');
+  seq = [...raw] as ('R' | 'T')[];
   el('pasteArea').style.display = 'none';
   refresh();
 });

@@ -1,12 +1,13 @@
-// Record type + validation for real two-color mash observations.
+// Record type + validation for real mash observations.
 //
-// Capture protocol (documented for collectors): prepare the deck with a
-// block of R-sleeved cards — your intended small packet — on the BOTTOM,
-// B-sleeved cards on top. Lift the bottom block at the color boundary and
-// mash once the way you always mash (its head becomes the new top), then
-// fan the deck and record the colors TOP to BOTTOM. Packets are identified
-// by color, so the actual split is the R count, the leading R run is the
-// overhang, and every run boundary is a packet alternation.
+// Capture protocol (documented for collectors — the flip method): cut the
+// deck the way you always do (lift the bottom packet), FLIP the lifted
+// packet to face the other way, and mash once the way you always mash.
+// Then input the cards TOP to BOTTOM: R = a flipped card (from the lifted
+// bottom packet), T = an unflipped card (from the top packet). The actual
+// split is the R count, the leading R run is the overhang (leading T run =
+// negative overhang), and every run boundary is a packet alternation.
+// Legacy records used B instead of T; readers accept both.
 
 export interface MashRecord {
   /** ISO8601 timestamp of the observation */
@@ -19,7 +20,7 @@ export interface MashRecord {
   deck: string;
   /** the split the collector was aiming for (small packet size) */
   intendedSplit: number;
-  /** colors top→bottom, e.g. "RRBBRBB…" */
+  /** cards top→bottom, e.g. "RRTTRTT…" (R = bottom packet, T = top packet) */
   string: string;
   /** deck size; must equal string.length */
   n: number;
@@ -64,8 +65,8 @@ export function validateRecord(raw: unknown): ValidationResult {
     if (typeof r.n === 'number' && s.length !== r.n) {
       errors.push(`string: length ${s.length} !== n (${r.n})`);
     }
-    if (!/^[RB]+$/.test(s)) {
-      errors.push('string: contains characters other than R and B');
+    if (!/^[RTB]+$/.test(s)) {
+      errors.push('string: contains characters other than R and T');
     }
   }
   if (
@@ -85,7 +86,8 @@ export function validateRecord(raw: unknown): ValidationResult {
       technique: r.technique as string,
       deck: r.deck as string,
       intendedSplit: r.intendedSplit as number,
-      string: r.string as string,
+      // normalize legacy B (old two-color protocol) to T on the way in
+      string: (r.string as string).replace(/B/g, 'T'),
       n: r.n as number,
     },
   };
