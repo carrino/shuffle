@@ -36,6 +36,9 @@ app.innerHTML = `
   .counts strong { font-size: 1.5rem; }
   .rowbtns { display:flex; gap:8px; margin: 10px 0; flex-wrap: wrap; }
   .meta { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 12px; }
+  /* form controls fill their grid cell instead of forcing it wider */
+  .meta > div { min-width: 0; }
+  .meta input, .meta select { width: 100%; font-size: 0.95rem; }
   #jsonline { width:100%; font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; }
   details > summary { cursor: pointer; color: var(--text-secondary); margin: 8px 0; }
 </style>
@@ -67,8 +70,8 @@ app.innerHTML = `
       <select id="decksize">
         <option value="40">40 (draft)</option>
         <option value="60">60 (standard)</option>
-        <option value="98">98 (commander, partners out)</option>
-        <option value="99" selected>99 (commander, general out)</option>
+        <option value="98">98 (2 partners)</option>
+        <option value="99" selected>99 (commander)</option>
         <option value="100">100 (full stack)</option>
       </select>
     </div>
