@@ -13,6 +13,7 @@
   --series-2: #eb6834; /* faro / comparison */
   --series-3: #1baf7a; /* mash / third series */
   --series-4: #eda100;
+  --series-5: #7a5af8; /* replay of recorded shuffles */
   --good: #0ca30c;
   --critical: #d03b3b;
   --band: rgba(137, 135, 129, 0.14);
@@ -32,6 +33,7 @@
     --series-2: #d95926;
     --series-3: #199e70;
     --series-4: #c98500;
+    --series-5: #8f75f2;
     --band: rgba(137, 135, 129, 0.18);
   }
 }

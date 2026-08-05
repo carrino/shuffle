@@ -336,7 +336,10 @@ function adjSdApprox(n: number): number {
   if (n === 52) return 1.508;
   if (n === 60) return 1.615;
   if (n === 100) return 2.109;
-  return n / 48; // rough fallback; MC tests pin the sizes we actually use
+  // The calibrated values fit 0.2109·√n to within ~1% (0.209, 0.209, 0.209,
+  // 0.211 across the table) — good enough for off-table sizes like the
+  // 99/98-card commander stacks.
+  return 0.2109 * Math.sqrt(n);
 }
 
 export interface MetricComputer {

@@ -43,12 +43,18 @@ app.innerHTML = `
 <div class="card">
   <details>
     <summary>Protocol (read once)</summary>
-    <p>Prepare the deck with a block of <strong style="color:var(--series-2)">R</strong>-sleeved
-    cards — your intended small packet — on the <strong>bottom</strong>,
-    <strong style="color:var(--series-1)">B</strong>-sleeved cards on top. Lift the
-    bottom block at the color boundary and mash once <em>the way you always
-    mash</em> (its first cards become the new top), then fan the deck and tap
-    the colors <strong>top to bottom</strong>.</p>
+    <p><strong>The flip method — no special sleeves needed.</strong>
+    Cut the deck the way you always do (lift the bottom packet), then
+    <strong>flip the lifted packet over</strong> so its cards face the other
+    way, and mash once <em>the way you always mash</em>. Fan the deck and tap
+    <strong>top to bottom</strong>: flipped cards are
+    <strong style="color:var(--series-2)">R</strong>, unflipped are
+    <strong style="color:var(--series-1)">B</strong>. Un-flip afterwards —
+    they're easy to spot.</p>
+    <p>Don't aim for a special cut — the natural cut is part of what's being
+    measured (the R count <em>is</em> your actual cut size; "intended split"
+    is just what you were going for). Ugly mashes are good data: record what
+    really happened, clumps, slabs and all.</p>
   </details>
   <div class="meta">
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>

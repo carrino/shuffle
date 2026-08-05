@@ -11,6 +11,7 @@ import { makeMashShuffle, type MashConfig } from '../sim/mash';
 import { uniformReference, METRIC_NAMES, type MetricName } from '../sim/metrics';
 import { theoryMilestones, type AnchoredDeckSize } from '../sim/anchors';
 import { fitRecords } from '../sim/fit';
+import { permFromRecord, makeReplayShuffle } from '../sim/replay';
 import { makeStaticStore } from '../data/store';
 import type { MashRecord } from '../data/schema';
 
@@ -128,8 +129,9 @@ app.innerHTML = `
   </label>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button id="loadFit" class="secondary">Use measured hands</button>
+    <button id="loadReplay" class="secondary">Replay recorded shuffles</button>
     <select id="fitWho" style="display:none"></select>
-    <span class="muted" id="fitInfo">fit the sliders + clump distribution from the recorded shuffles in data/mashes.jsonl</span>
+    <span class="muted" id="fitInfo">fit the sliders from the recorded shuffles in data/mashes.jsonl — or replay the exact recorded permutations, no model in between</span>
   </div>
   <div class="sliders" id="sliders"></div>
 </div>
@@ -157,6 +159,7 @@ deckSel.addEventListener('change', () => {
   const split = document.getElementById('sl-splitMean') as HTMLInputElement;
   split.max = String(maxCut(deckN));
   split.value = String(Math.max(5, Math.min(maxCut(deckN), Math.round((Number(split.value) * deckN) / oldN))));
+  replayResult = null; // recorded permutations don't rescale
   schedule();
 });
 
@@ -202,7 +205,46 @@ function applyFit(): void {
   schedule();
 }
 
-document.getElementById('loadFit')!.addEventListener('click', () => {
+// Replay state: exact recorded permutations, sampled at random each pass —
+// shown as an extra curve on the headline chart. Cleared on deck change.
+let replayResult: CurveResult | null = null;
+let replayLabel = '';
+
+function applyReplay(): void {
+  if (!dataRecords || dataRecords.length === 0) return;
+  const who = (document.getElementById('fitWho') as HTMLSelectElement).value;
+  const recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
+  const sizes = [...new Set(recs.map((r) => r.n))];
+  if (sizes.length === 0) return;
+  // replay can't rescale a permutation — use the recorded size nearest the
+  // explore deck, and only if it's close (99-card records serve n=100)
+  const nRec = sizes.reduce((a, b) => (Math.abs(b - deckN) < Math.abs(a - deckN) ? b : a));
+  if (Math.abs(nRec - deckN) > 2) {
+    document.getElementById('fitInfo')!.textContent =
+      `no recorded shuffles near n=${deckN} (have: ${sizes.join(', ')})`;
+    return;
+  }
+  const perms = recs.filter((r) => r.n === nRec).map(permFromRecord);
+  replayResult = metricCurves(makeReplayShuffle(perms), {
+    n: nRec,
+    K,
+    T,
+    seed: SEED + 3,
+    lfSamples: LF_SAMPLES,
+  });
+  replayLabel = `${perms.length} recorded shuffle${perms.length === 1 ? '' : 's'}`;
+  document.getElementById('fitInfo')!.textContent =
+    `replaying ${replayLabel} (n=${nRec}) drawn at random each pass — ` +
+    `selection entropy ≤ log₂(${perms.length}) ≈ ${Math.log2(perms.length).toFixed(1)} bits/pass, ` +
+    `so treat as a model cross-check until the library grows`;
+  resim();
+}
+
+function ensureData(next: () => void): void {
+  if (dataRecords) {
+    next();
+    return;
+  }
   void makeStaticStore()
     .read()
     .then((r) => {
@@ -218,13 +260,19 @@ document.getElementById('loadFit')!.addEventListener('click', () => {
         (collectors.length > 1 ? `<option value="POOLED">everyone (pooled)</option>` : '') +
         collectors.map((c) => `<option value="${c}">${c}</option>`).join('');
       sel.style.display = '';
-      applyFit();
+      next();
     })
     .catch(() => {
       document.getElementById('fitInfo')!.textContent = 'could not load data/mashes.jsonl';
     });
+}
+
+document.getElementById('loadFit')!.addEventListener('click', () => ensureData(applyFit));
+document.getElementById('loadReplay')!.addEventListener('click', () => ensureData(applyReplay));
+document.getElementById('fitWho')!.addEventListener('change', () => {
+  applyFit();
+  if (replayResult) applyReplay();
 });
-document.getElementById('fitWho')!.addEventListener('change', applyFit);
 
 function currentConfig(): MashConfig {
   const get = (k: string) => Number((document.getElementById(`sl-${k}`) as HTMLInputElement).value);
@@ -285,6 +333,10 @@ function resim(): void {
       (m) => `<span class="item"><strong>${fmtCert(result.cert.perMetric[m])}</strong>
         <span class="muted">${METRIC_LABELS[m]}</span></span>`,
     ).join('') +
+    (replayResult
+      ? `<span class="item"><strong>${fmtCert(replayResult.cert.overall)}</strong>
+      <span class="muted">replay of ${replayLabel}</span></span>`
+      : '') +
     `<span class="item"><strong>${fmtCert(gsrDyn.cert.overall)}</strong>
       <span class="muted">GSR + your cut/overhang</span></span>
      <span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
@@ -324,6 +376,7 @@ function resim(): void {
     certDot(result.cert.overall),
     certDot(gsrDyn.cert.overall),
     certDot(baseline.cert.overall),
+    ...(replayResult ? [certDot(replayResult.cert.overall)] : []),
   ]);
   disposers.push(
     mountChart(charts, {
@@ -337,6 +390,9 @@ function resim(): void {
         { label: 'mash', colorVar: '--series-3', values: win(worstEffect(result), wAll), certAt: certDot(result.cert.overall) },
         { label: 'GSR + your hands', colorVar: '--series-2', values: win(worstEffect(gsrDyn), wAll), certAt: certDot(gsrDyn.cert.overall) },
         { label: 'GSR (fixed)', colorVar: '--series-1', values: win(worstEffect(baseline), wAll), certAt: certDot(baseline.cert.overall) },
+        ...(replayResult
+          ? [{ label: 'replayed shuffles', colorVar: '--series-5', values: win(worstEffect(replayResult), wAll), certAt: certDot(replayResult.cert.overall) }]
+          : []),
       ],
       refLine: 0.25,
       innerBand: { lo: 1e-6, hi: 0.25 },
