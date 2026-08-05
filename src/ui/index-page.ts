@@ -175,8 +175,14 @@ function setSlider(key: string, value: number): void {
 function applyFit(): void {
   if (!dataRecords || dataRecords.length === 0) return;
   const who = (document.getElementById('fitWho') as HTMLSelectElement).value;
-  const recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
+  let recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
   if (recs.length === 0) return;
+  // Cuts are absolute card counts, so records from different deck sizes
+  // don't pool — fit only the recorded size closest to the explore deck
+  // (99-card commander records serve a 100-card sim, etc.).
+  const sizes = [...new Set(recs.map((r) => r.n))];
+  const nearestN = sizes.reduce((a, b) => (Math.abs(b - deckN) < Math.abs(a - deckN) ? b : a));
+  recs = recs.filter((r) => r.n === nearestN);
   const fit = fitRecords(who, recs);
   const avgN = recs.reduce((s, r) => s + r.n, 0) / recs.length;
   const scale = deckN / avgN;
