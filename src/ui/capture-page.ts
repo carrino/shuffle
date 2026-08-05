@@ -73,21 +73,21 @@ app.innerHTML = `
 </div>
 
 <div class="tapper">
-  <button class="r" id="tapR">R</button>
   <button class="b" id="tapB">B</button>
+  <button class="r" id="tapR">R</button>
 </div>
 
 <div class="rowbtns">
   <button class="secondary" id="undo">← Undo</button>
   <button class="secondary" id="clear">Clear</button>
-  <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
   <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
+  <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
 <p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
-or <code>r</code>/<code>b</code> tap a card (left = R, right = B);
+or <code>b</code>/<code>r</code> tap a card (left = B, right = R);
 <code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
-(or <code>Shift+R</code>/<code>Shift+B</code>) fill the remainder with one color;
+(or <code>Shift+B</code>/<code>Shift+R</code>) fill the remainder with one color;
 <code>Enter</code> saves a complete record and starts the next.</p>
 <div id="pasteArea" style="display:none">
   <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
@@ -256,10 +256,10 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key;
-  if (key === 'r' || key === 'z' || key === 'ArrowLeft') tap('R');
-  else if (key === 'b' || key === 'x' || key === 'ArrowRight') tap('B');
-  else if (key === 'R' || key === 'Z') fillRest('R');
-  else if (key === 'B' || key === 'X') fillRest('B');
+  if (key === 'b' || key === 'z' || key === 'ArrowLeft') tap('B');
+  else if (key === 'r' || key === 'x' || key === 'ArrowRight') tap('R');
+  else if (key === 'B' || key === 'Z') fillRest('B');
+  else if (key === 'R' || key === 'X') fillRest('R');
   else if (key === 'Backspace' || key === 'u') undo();
   else if (key === 'Enter') saveAndNext();
   else return;
