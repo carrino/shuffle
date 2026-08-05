@@ -4,7 +4,7 @@ A static TypeScript web app that simulates card shuffling to answer one
 question: **for a 100-card (sleeved) deck, how many mash shuffles reach
 randomness**, given that sleeved mash shuffles interleave much more cleanly
 than the standard GSR riffle model assumes. It is also the capture and
-analysis tool for real two-color shuffle observations.
+analysis tool for real shuffle observations (the flip-method capture).
 
 Live site: deployed to GitHub Pages by CI on every push to `main` (CI
 pushes the built site to the `gh-pages` branch; Pages source must be set to
@@ -54,13 +54,13 @@ via GSR drops. The mechanic matters:
 many shuffles assuming *perfect interleaving* (`mu=1`), where the only
 randomness is the bottom-cut size and the overhang? Fitted real-world clump
 rates then adjust the answer. All three fitted parameters are directly
-observable in the two-color capture data: the split is the R count, the
-signed overhang is the leading run (R = +, B = −), and the interleave
+observable in the flip-method capture data: the split is the U count, the
+signed overhang is the leading run (U = +, T = −), and the interleave
 randomness is the interior run-length histogram — which `mash()` can sample
 from directly (`MashConfig.runDist`), so simulation uses the real clump
 shape rather than just its geometric-mean approximation.
 
-Fitting real two-color observations (Phase 4) recovers these parameters per
+Fitting real capture observations (Phase 4) recovers these parameters per
 collector.
 
 ### Early findings from the model (before real data)
@@ -198,16 +198,18 @@ with metric curves for GSR and faro plus the exact-TV overlay.
 
 ## Data schema and the git-append workflow
 
-Real observations are two-color ("R"/"B") strings read off a fanned deck
+Real observations are "U"/"T" strings input top-to-bottom after a flip-method
+mash (cut, flip the lifted packet, mash; U = flipped face-Up/bottom packet,
+T = unflipped/Top packet; legacy records used "R"/"B" for U/T)
 after one mash. One JSON line per observation in `data/mashes.jsonl`
 (append-only):
 
 ```json
-{"ts":"2026-08-04T12:00:00Z","collector":"john","technique":"mash","deck":"sleeved-100","intendedSplit":30,"n":100,"string":"RRBBRB…"}
+{"ts":"2026-08-04T12:00:00Z","collector":"john","technique":"mash","deck":"sleeved-100","intendedSplit":30,"n":100,"string":"UUTTUT…"}
 ```
 
 `validate()` (in `src/data/schema.ts`) requires `string.length === n` and
-characters ⊆ {R, B}. The `/capture` page is a phone-friendly tapper (big R/B
+characters ⊆ {U, T}. The `/capture` page is a phone-friendly tapper (big U/T
 buttons, undo, paste mode) that emits a validated JSON line to copy or
 download; appending it to `data/mashes.jsonl` happens via git commit, so
 writes stay serialized through review until a real endpoint exists.

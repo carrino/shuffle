@@ -182,6 +182,29 @@ describe('mash — GSR-like limit (mu=2, binomial-like split)', () => {
   // a fixed mu, while GSR cuts near the top-half and drops proportionally
   // to remaining packet size. The transient differs by up to ~2 single-perm
   // SD around k=3-5, the mid-curve by ≤ ~1.2, and the tails agree; the test
+  // interleave: 'gsr' swaps the run-length model for the classic GSR drop
+  // rule while keeping the cut/overhang mechanics — the apples-to-apples
+  // riffle baseline for the explore page.
+  it("interleave: 'gsr' is a valid permutation and certifies near true GSR", () => {
+    const n = 52;
+    const rng = makePRNG(11);
+    const deck = makeDeck(n);
+    const scratch = new Int16Array(n);
+    const cfg: MashConfig = { ...base, splitMean: 26, interleave: 'gsr' };
+    for (let i = 0; i < 50; i++) mash(deck, scratch, rng, cfg);
+    expect([...deck].sort((a, b) => a - b)).toEqual([...makeDeck(n)]);
+
+    const T = 800;
+    const g = metricCurves(gsr, { n, K: 22, T, seed: 7, lfSamples: 30_000 });
+    const d = metricCurves(makeMashShuffle(cfg), { n, K: 22, T, seed: 9, lfSamples: 30_000 });
+    const gk = certK(g.cert.overall);
+    const dk = certK(d.cert.overall);
+    expect(Number.isFinite(dk), 'gsr-interleave never certified').toBe(true);
+    // same drop rule; a fixed-size Gaussian cut + overhang should land within
+    // a couple of shuffles of the binomial-cut original
+    expect(Math.abs(dk - gk)).toBeLessThanOrEqual(3);
+  });
+
   // pins those documented tolerances plus certification agreement.
   it('metric curves track gsr() within documented tolerance', () => {
     const n = 52;

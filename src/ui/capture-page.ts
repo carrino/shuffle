@@ -1,5 +1,5 @@
-// /capture — phone-friendly recorder for real two-color mash observations.
-// Big R/B tap targets, undo, paste mode, live validation, JSON-line output
+// /capture — phone-friendly recorder for real mash observations (flip method).
+// Big U/T tap targets, undo, paste mode, live validation, JSON-line output
 // with copy/download. Writes go through the store interface (today: a line
 // you append to data/mashes.jsonl via git; later: an HTTP endpoint).
 
@@ -20,8 +20,8 @@ app.innerHTML = `
     height: min(34vh, 260px); border-radius: 16px; color: #fff;
     touch-action: manipulation; -webkit-user-select: none; user-select: none;
   }
-  .tapper .r { background: var(--series-2); }
-  .tapper .b { background: var(--series-1); }
+  .tapper .u { background: var(--series-2); }
+  .tapper .t { background: var(--series-1); }
   .tapper button:active { filter: brightness(1.15); }
   .seq {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -29,13 +29,16 @@ app.innerHTML = `
     border: 1px solid var(--border); border-radius: 10px;
     padding: 10px; min-height: 3.2em; font-size: 0.95rem;
   }
-  .seq .r { color: var(--series-2); font-weight:700 }
-  .seq .b { color: var(--series-1); }
+  .seq .u { color: var(--series-2); font-weight:700 }
+  .seq .t { color: var(--series-1); }
   .counts { display:flex; gap:16px; font-variant-numeric: tabular-nums;
     font-size: 1.05rem; margin: 8px 0; align-items: baseline; flex-wrap: wrap; }
   .counts strong { font-size: 1.5rem; }
   .rowbtns { display:flex; gap:8px; margin: 10px 0; flex-wrap: wrap; }
   .meta { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 12px; }
+  /* form controls fill their grid cell instead of forcing it wider */
+  .meta > div { min-width: 0; }
+  .meta input, .meta select { width: 100%; font-size: 0.95rem; }
   #jsonline { width:100%; font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; }
   details > summary { cursor: pointer; color: var(--text-secondary); margin: 8px 0; }
 </style>
@@ -43,54 +46,63 @@ app.innerHTML = `
 <div class="card">
   <details>
     <summary>Protocol (read once)</summary>
-    <p>Prepare the deck with a block of <strong style="color:var(--series-2)">R</strong>-sleeved
-    cards — your intended small packet — on the <strong>bottom</strong>,
-    <strong style="color:var(--series-1)">B</strong>-sleeved cards on top. Lift the
-    bottom block at the color boundary and mash once <em>the way you always
-    mash</em> (its first cards become the new top), then fan the deck and tap
-    the colors <strong>top to bottom</strong>.</p>
+    <p>Cut the deck the way you always do (lift the bottom packet),
+    <strong>flip the lifted packet over</strong> so it faces the other way,
+    and mash once the way you always mash. Then input the cards
+    <strong>top to bottom</strong>:
+    <strong style="color:var(--series-1)">T</strong> for an unflipped card
+    (from the <strong>T</strong>op packet),
+    <strong style="color:var(--series-2)">U</strong> for a flipped,
+    face-<strong>U</strong>p card (from the lifted bottom packet). Un-flip
+    them afterwards — they're easy to spot.</p>
+    <p>Cut wherever feels natural — the cut size is part of what's being
+    measured (the U count is your actual cut; "intended split" is just what
+    you were aiming for). Ugly mashes are good data: record what really
+    happened, clumps, slabs and all.</p>
   </details>
   <div class="meta">
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>
     <div><label for="technique">Technique</label><input id="technique" value="mash"></div>
-    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-100"></div>
-    <div><label for="intended">Intended split</label><input id="intended" type="number" value="35" min="1" inputmode="numeric"></div>
+    <div><label for="deckname">Deck</label><input id="deckname" value="sleeved-60"></div>
+    <div><label for="intended">Intended split</label><input id="intended" type="number" value="21" min="1" inputmode="numeric"></div>
     <div><label for="decksize">Deck size n</label>
       <select id="decksize">
         <option value="40">40 (draft)</option>
-        <option value="60">60 (standard)</option>
-        <option value="100" selected>100 (commander)</option>
+        <option value="60" selected>60 (standard)</option>
+        <option value="98">98 (2 partners)</option>
+        <option value="99">99 (commander)</option>
+        <option value="100">100 (full stack)</option>
       </select>
     </div>
   </div>
 </div>
 
 <div class="counts card">
-  <span>R <strong id="countR">0</strong></span>
-  <span>B <strong id="countB">0</strong></span>
-  <span>total <strong id="countT">0</strong>/<span id="targetN">100</span></span>
+  <span>T <strong id="countT2">0</strong></span>
+  <span>U <strong id="countU">0</strong></span>
+  <span>total <strong id="countT">0</strong>/<span id="targetN">60</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
 
 <div class="tapper">
-  <button class="r" id="tapR">R</button>
-  <button class="b" id="tapB">B</button>
+  <button class="t" id="tapT">T</button>
+  <button class="u" id="tapU">U</button>
 </div>
 
 <div class="rowbtns">
   <button class="secondary" id="undo">← Undo</button>
   <button class="secondary" id="clear">Clear</button>
-  <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
-  <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
+  <button class="secondary" id="fillT" style="color:var(--series-1)">Fill rest T</button>
+  <button class="secondary" id="fillU" style="color:var(--series-2)">Fill rest U</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
 <p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
-or <code>r</code>/<code>b</code> tap a card (left = R, right = B);
-<code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
-(or <code>Shift+R</code>/<code>Shift+B</code>) fill the remainder with one color;
+or <code>t</code>/<code>u</code> tap a card (left = T, right = U — same order as
+on the keyboard); <code>Backspace</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
+(or <code>Shift+T</code>/<code>Shift+U</code>) fill the remainder with one side;
 <code>Enter</code> saves a complete record and starts the next.</p>
 <div id="pasteArea" style="display:none">
-  <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
+  <label for="pasteInput">Paste U/T string (spaces/newlines ignored, lowercase ok; legacy R/B read as U/T)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
   <div class="rowbtns"><button id="pasteApply">Use this string</button></div>
 </div>
@@ -124,7 +136,13 @@ or <code>r</code>/<code>b</code> tap a card (left = R, right = B);
   </div>
 </div>`;
 
-let seq: ('R' | 'B')[] = [];
+// In-progress taps survive an accidental reload (or a mid-capture deploy):
+// restored on load, saved on every change, cleared by Save & next / Clear.
+const INPROGRESS_KEY = 'mash-capture-inprogress';
+let seq: ('U' | 'T')[] = (() => {
+  const raw = localStorage.getItem(INPROGRESS_KEY) ?? '';
+  return /^[UT]*$/.test(raw) ? ([...raw] as ('U' | 'T')[]) : [];
+})();
 
 const el = (id: string) => document.getElementById(id)!;
 const input = (id: string) => el(id) as HTMLInputElement;
@@ -187,9 +205,10 @@ function record() {
 }
 
 function refresh(): void {
-  const r = seq.filter((c) => c === 'R').length;
-  el('countR').textContent = String(r);
-  el('countB').textContent = String(seq.length - r);
+  localStorage.setItem(INPROGRESS_KEY, seq.join(''));
+  const r = seq.filter((c) => c === 'U').length;
+  el('countU').textContent = String(r);
+  el('countT2').textContent = String(seq.length - r);
   el('countT').textContent = String(seq.length);
   el('targetN').textContent = input('decksize').value;
   el('seq').innerHTML = seq
@@ -229,7 +248,7 @@ function refresh(): void {
   }
 }
 
-function tap(c: 'R' | 'B'): void {
+function tap(c: 'U' | 'T'): void {
   seq.push(c);
   refresh();
 }
@@ -238,17 +257,17 @@ function undo(): void {
   refresh();
 }
 /** Fill the rest of the deck with one color — the ordered remnant block. */
-function fillRest(c: 'R' | 'B'): void {
+function fillRest(c: 'U' | 'T'): void {
   const n = Number(input('decksize').value);
   if (!Number.isInteger(n) || n < 2) return;
   while (seq.length < n) seq.push(c);
   refresh();
 }
-el('tapR').addEventListener('click', () => tap('R'));
-el('tapB').addEventListener('click', () => tap('B'));
+el('tapU').addEventListener('click', () => tap('U'));
+el('tapT').addEventListener('click', () => tap('T'));
 el('undo').addEventListener('click', undo);
-el('fillR').addEventListener('click', () => fillRest('R'));
-el('fillB').addEventListener('click', () => fillRest('B'));
+el('fillU').addEventListener('click', () => fillRest('U'));
+el('fillT').addEventListener('click', () => fillRest('T'));
 
 // Keyboard entry (desktop): ignore keystrokes aimed at form fields.
 document.addEventListener('keydown', (e) => {
@@ -256,11 +275,11 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key;
-  if (key === 'r' || key === 'z' || key === 'ArrowLeft') tap('R');
-  else if (key === 'b' || key === 'x' || key === 'ArrowRight') tap('B');
-  else if (key === 'R' || key === 'Z') fillRest('R');
-  else if (key === 'B' || key === 'X') fillRest('B');
-  else if (key === 'Backspace' || key === 'u') undo();
+  if (key === 't' || key === 'z' || key === 'ArrowLeft') tap('T');
+  else if (key === 'u' || key === 'x' || key === 'ArrowRight') tap('U');
+  else if (key === 'T' || key === 'Z') fillRest('T');
+  else if (key === 'U' || key === 'X') fillRest('U');
+  else if (key === 'Backspace') undo();
   else if (key === 'Enter') saveAndNext();
   else return;
   e.preventDefault();
@@ -278,8 +297,10 @@ el('pasteToggle').addEventListener('click', () => {
 el('pasteApply').addEventListener('click', () => {
   const raw = (el('pasteInput') as HTMLTextAreaElement).value
     .toUpperCase()
-    .replace(/[^RB]/g, '');
-  seq = [...raw] as ('R' | 'B')[];
+    .replace(/R/g, 'U')
+    .replace(/B/g, 'T')
+    .replace(/[^UT]/g, '');
+  seq = [...raw] as ('U' | 'T')[];
   el('pasteArea').style.display = 'none';
   refresh();
 });

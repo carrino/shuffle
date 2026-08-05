@@ -65,6 +65,15 @@ export interface MashConfig {
    * ends for positive values, 0 = uniform mu everywhere.
    */
   positionDependence?: number;
+  /**
+   * Interleave model. 'runs' (default) is the mash run-length model
+   * (geometric(mu) or runDist). 'gsr' replaces it with the classic GSR drop
+   * rule — each card comes from a packet with probability proportional to
+   * its remaining size — while keeping the same cut and overhang mechanics.
+   * This is the apples-to-apples riffle baseline: same hands, different
+   * interleave. mu, runDist and positionDependence are ignored.
+   */
+  interleave?: 'runs' | 'gsr';
 }
 
 export const DEFAULT_MASH: MashConfig = {
@@ -167,6 +176,23 @@ export function mash(deck: Int16Array, scratch: Int16Array, rng: PRNG, cfg: Mash
   } else if (overhang < 0) {
     for (let i = 0; i < -overhang && ib < nB; i++, ib++, k++) {
       scratch[fromTop ? k : n - 1 - k] = fromTop ? B[ib]! : B[nB - 1 - ib]!;
+    }
+  }
+  if (cfg.interleave === 'gsr') {
+    // GSR drop rule: one card at a time, side chosen with probability
+    // proportional to its remaining size. B's tail still lands as a block
+    // once A empties (handled by the leftover loops below).
+    while (ia < s && ib < nB) {
+      const remA = s - ia;
+      const remB = nB - ib;
+      if (rng.nextFloat() * (remA + remB) < remA) {
+        scratch[fromTop ? k : n - 1 - k] = fromTop ? A[ia]! : A[s - 1 - ia]!;
+        ia++;
+      } else {
+        scratch[fromTop ? k : n - 1 - k] = fromTop ? B[ib]! : B[nB - 1 - ib]!;
+        ib++;
+      }
+      k++;
     }
   }
   // interleaving starts opposite the overhang block (or with A when flush)

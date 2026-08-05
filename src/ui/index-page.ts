@@ -10,6 +10,10 @@ import { gsr } from '../sim/operators';
 import { makeMashShuffle, type MashConfig } from '../sim/mash';
 import { uniformReference, METRIC_NAMES, type MetricName } from '../sim/metrics';
 import { theoryMilestones, type AnchoredDeckSize } from '../sim/anchors';
+import { fitRecords } from '../sim/fit';
+import { permFromRecord, makeReplayShuffle } from '../sim/replay';
+import { makeStaticStore } from '../data/store';
+import type { MashRecord } from '../data/schema';
 
 const K = 32;
 const T = 1000;
@@ -45,7 +49,7 @@ const num = (k: string, d: number) => {
 // deck size: 60 (standard) or 100 (commander); everything downstream —
 // uniform references, GSR baseline, theory milestones, log2 floor — is
 // parametric in n, with exact TV anchors baked in for both sizes
-const nParam = num('n', 100);
+const nParam = num('n', 60);
 let deckN: AnchoredDeckSize = nParam === 40 ? 40 : nParam === 60 ? 60 : 100;
 
 // A fitted empirical run-length distribution can arrive via ?rd=p1,p2,…
@@ -89,8 +93,20 @@ app.innerHTML = `
   interleave down into the rest — clump size is how many cards fall together
   from one side before the other side gets in (1 = perfect one-at-a-time
   alternation) — and the big packet's remainder settles at the bottom, so
-  cards cycle and nothing freezes. GSR (blue) is the classic riffle model for
-  comparison; gray band = uniform mean ± 2 SD. Mixedness is
+  cards cycle and nothing freezes. GSR (blue) is a <strong>fixed
+  baseline</strong> — the classic riffle model with its standard assumptions
+  (binomial half-cut, no overhang), computed once per deck size and unmoved
+  by the sliders. Orange is <strong>GSR with your hands</strong>: the same
+  cut, wobble and overhang the sliders describe, but GSR's drop rule instead
+  of the clump-size interleave — apples-to-apples against the green mash
+  curve, isolating what the interleave model itself contributes.
+  Read the <strong>first chart</strong>: it plots how far the worst metric
+  still is from uniform on a log scale, where each shuffle's halving is a
+  straight line. Everywhere, the <strong>green stripe is the certification
+  target</strong> (ref ± 0.25·SD) and the <strong>dot on each curve</strong>
+  marks the shuffle where that curve certifies; charts window to the
+  interesting range (the sorted-deck transient and the converged tail are
+  cropped). Mixedness is
   <strong>certifiedMixed(c=0.25, α=0.05)</strong> over T=${T} trajectories:
   the first shuffle where every metric's 95% CI fits inside
   ref ± 0.25·SD<sub>uniform</sub> and stays there (equivalence testing — see
@@ -111,6 +127,12 @@ app.innerHTML = `
       <option value="100">100 (commander)</option>
     </select>
   </label>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button id="loadFit" class="secondary">Use measured hands</button>
+    <button id="loadReplay" class="secondary">Replay recorded shuffles</button>
+    <select id="fitWho" style="display:none"></select>
+    <span class="muted" id="fitInfo">fit the sliders from the recorded shuffles in data/mashes.jsonl — or replay the exact recorded permutations, no model in between</span>
+  </div>
   <div class="sliders" id="sliders"></div>
 </div>
 <div class="card readout" id="readout"></div>
@@ -137,7 +159,119 @@ deckSel.addEventListener('change', () => {
   const split = document.getElementById('sl-splitMean') as HTMLInputElement;
   split.max = String(maxCut(deckN));
   split.value = String(Math.max(5, Math.min(maxCut(deckN), Math.round((Number(split.value) * deckN) / oldN))));
+  replayResult = null; // recorded permutations don't rescale
   schedule();
+});
+
+// "Use measured hands": fetch the recorded shuffles, fit the chosen
+// collector, and drive the sliders + clump distribution from the fit. The
+// cut scales proportionally when the explore deck differs from the recorded
+// decks; the overhang is a physical block size and stays absolute.
+let dataRecords: MashRecord[] | null = null;
+
+function setSlider(key: string, value: number): void {
+  const el = document.getElementById(`sl-${key}`) as HTMLInputElement;
+  const v = Math.max(Number(el.min), Math.min(Number(el.max), value));
+  el.value = String(Math.round(v / Number(el.step)) * Number(el.step));
+}
+
+function applyFit(): void {
+  if (!dataRecords || dataRecords.length === 0) return;
+  const who = (document.getElementById('fitWho') as HTMLSelectElement).value;
+  let recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
+  if (recs.length === 0) return;
+  // Cuts are absolute card counts, so records from different deck sizes
+  // don't pool — fit only the recorded size closest to the explore deck
+  // (99-card commander records serve a 100-card sim, etc.).
+  const sizes = [...new Set(recs.map((r) => r.n))];
+  const nearestN = sizes.reduce((a, b) => (Math.abs(b - deckN) < Math.abs(a - deckN) ? b : a));
+  recs = recs.filter((r) => r.n === nearestN);
+  const fit = fitRecords(who, recs);
+  const avgN = recs.reduce((s, r) => s + r.n, 0) / recs.length;
+  const scale = deckN / avgN;
+  setSlider('splitMean', fit.config.splitMean * scale);
+  setSlider('splitSd', fit.config.splitSd * scale);
+  setSlider('overhangMean', fit.config.overhangMean);
+  setSlider('overhangSd', fit.config.overhangSd);
+  setSlider('positionDependence', fit.config.positionDependence ?? 0);
+  setSlider('mu', fit.config.mu);
+  runDist = fit.config.runDist ? [...fit.config.runDist] : null;
+  document.getElementById('fitInfo')!.textContent =
+    `${fit.recordCount} record${fit.recordCount === 1 ? '' : 's'} by ${who}` +
+    (Math.abs(scale - 1) > 0.01
+      ? ` (deck n≈${Math.round(avgN)}; cut scaled ×${scale.toFixed(2)} to n=${deckN})`
+      : '') +
+    ` — clump dist applied`;
+  schedule();
+}
+
+// Replay state: exact recorded permutations, sampled at random each pass —
+// shown as an extra curve on the headline chart. Cleared on deck change.
+let replayResult: CurveResult | null = null;
+let replayLabel = '';
+
+function applyReplay(): void {
+  if (!dataRecords || dataRecords.length === 0) return;
+  const who = (document.getElementById('fitWho') as HTMLSelectElement).value;
+  const recs = who === 'POOLED' ? dataRecords : dataRecords.filter((r) => r.collector === who);
+  const sizes = [...new Set(recs.map((r) => r.n))];
+  if (sizes.length === 0) return;
+  // replay can't rescale a permutation — use the recorded size nearest the
+  // explore deck, and only if it's close (99-card records serve n=100)
+  const nRec = sizes.reduce((a, b) => (Math.abs(b - deckN) < Math.abs(a - deckN) ? b : a));
+  if (Math.abs(nRec - deckN) > 2) {
+    document.getElementById('fitInfo')!.textContent =
+      `no recorded shuffles near n=${deckN} (have: ${sizes.join(', ')})`;
+    return;
+  }
+  const perms = recs.filter((r) => r.n === nRec).map(permFromRecord);
+  replayResult = metricCurves(makeReplayShuffle(perms), {
+    n: nRec,
+    K,
+    T,
+    seed: SEED + 3,
+    lfSamples: LF_SAMPLES,
+  });
+  replayLabel = `${perms.length} recorded shuffle${perms.length === 1 ? '' : 's'}`;
+  document.getElementById('fitInfo')!.textContent =
+    `replaying ${replayLabel} (n=${nRec}) drawn at random each pass — ` +
+    `selection entropy ≤ log₂(${perms.length}) ≈ ${Math.log2(perms.length).toFixed(1)} bits/pass, ` +
+    `so treat as a model cross-check until the library grows`;
+  resim();
+}
+
+function ensureData(next: () => void): void {
+  if (dataRecords) {
+    next();
+    return;
+  }
+  void makeStaticStore()
+    .read()
+    .then((r) => {
+      dataRecords = r.records;
+      const info = document.getElementById('fitInfo')!;
+      if (r.records.length === 0) {
+        info.textContent = 'no records in data/mashes.jsonl yet — tap some out on /capture';
+        return;
+      }
+      const collectors = [...new Set(r.records.map((rec) => rec.collector))];
+      const sel = document.getElementById('fitWho') as HTMLSelectElement;
+      sel.innerHTML =
+        (collectors.length > 1 ? `<option value="POOLED">everyone (pooled)</option>` : '') +
+        collectors.map((c) => `<option value="${c}">${c}</option>`).join('');
+      sel.style.display = '';
+      next();
+    })
+    .catch(() => {
+      document.getElementById('fitInfo')!.textContent = 'could not load data/mashes.jsonl';
+    });
+}
+
+document.getElementById('loadFit')!.addEventListener('click', () => ensureData(applyFit));
+document.getElementById('loadReplay')!.addEventListener('click', () => ensureData(applyReplay));
+document.getElementById('fitWho')!.addEventListener('change', () => {
+  applyFit();
+  if (replayResult) applyReplay();
 });
 
 function currentConfig(): MashConfig {
@@ -174,6 +308,19 @@ function resim(): void {
     seed: SEED + 1,
     lfSamples: LF_SAMPLES,
   });
+  // Apples-to-apples riffle: identical cut + overhang params, GSR drop rule.
+  const gsrDyn = metricCurves(
+    makeMashShuffle({
+      splitMean: cfg.splitMean,
+      splitSd: cfg.splitSd,
+      mu: 1,
+      overhangMean: cfg.overhangMean,
+      overhangSd: cfg.overhangSd,
+      remnantEnd: cfg.remnantEnd,
+      interleave: 'gsr',
+    }),
+    { n: deckN, K, T, seed: SEED + 2, lfSamples: LF_SAMPLES },
+  );
 
   // readout
   const readout = document.getElementById('readout')!;
@@ -186,8 +333,14 @@ function resim(): void {
       (m) => `<span class="item"><strong>${fmtCert(result.cert.perMetric[m])}</strong>
         <span class="muted">${METRIC_LABELS[m]}</span></span>`,
     ).join('') +
-    `<span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
-      <span class="muted">GSR certified (baseline)</span></span>
+    (replayResult
+      ? `<span class="item"><strong>${fmtCert(replayResult.cert.overall)}</strong>
+      <span class="muted">replay of ${replayLabel}</span></span>`
+      : '') +
+    `<span class="item"><strong>${fmtCert(gsrDyn.cert.overall)}</strong>
+      <span class="muted">GSR + your cut/overhang</span></span>
+     <span class="item"><strong>${fmtCert(baseline.cert.overall)}</strong>
+      <span class="muted">GSR certified (fixed baseline)</span></span>
      <span class="item"><strong>${milestones.knee} / ${milestones.fair}</strong>
       <span class="muted">M_KNEE / M_FAIR (GSR theory, n=${deckN})</span></span>
      <span class="item"><strong>${log2Floor}</strong><span class="muted">log₂ floor</span></span>`;
@@ -196,20 +349,80 @@ function resim(): void {
   for (const d of disposers) d();
   disposers.length = 0;
   const charts = document.getElementById('charts')!;
-  const x = Array.from({ length: K }, (_, i) => i + 1);
+  const fullX = Array.from({ length: K }, (_, i) => i + 1);
+
+  // Zoom each chart to the action: start a couple of shuffles before the
+  // log2 floor (or the earliest dot, whichever is first), end 4 past the
+  // last certification dot. Helpful beats complete — the sorted-deck
+  // transient and the long converged tail carry no information.
+  const chartWindow = (dots: (number | undefined)[]): { lo: number; hi: number; x: number[] } => {
+    const ds = dots.filter((d): d is number => d !== undefined);
+    const lo = Math.max(1, Math.min(ds.length ? Math.min(...ds) : log2Floor, log2Floor) - 2);
+    const hi = ds.length ? Math.min(K, Math.max(...ds) + 4) : K;
+    return { lo, hi, x: fullX.slice(lo - 1, hi) };
+  };
+  const win = (arr: ArrayLike<number>, w: { lo: number; hi: number }): number[] =>
+    Array.from(arr).slice(w.lo - 1, w.hi);
+
+  // Headline chart: worst-metric standardized bias on a log scale — the
+  // quantity certification actually gates on. Exponential decay renders as
+  // a straight line; certification happens where a curve falls below the
+  // c=0.25 margin (plus CI width) and stays.
+  const worstEffect = (r: CurveResult): number[] =>
+    fullX.map((_, k) =>
+      Math.max(...METRIC_NAMES.map((m) => Math.abs(r.curves[m].effect[k]!))),
+    );
+  const wAll = chartWindow([
+    certDot(result.cert.overall),
+    certDot(gsrDyn.cert.overall),
+    certDot(baseline.cert.overall),
+    ...(replayResult ? [certDot(replayResult.cert.overall)] : []),
+  ]);
+  disposers.push(
+    mountChart(charts, {
+      title: 'Distance from random — worst metric (log scale)',
+      subtitle: `|trajectory mean − uniform| in single-deck SDs; green = certified zone (c=0.25), dot = first shuffle certified; the flat wiggle is simulation noise (T=${T})`,
+      x: wAll.x,
+      xLabel: 'shuffles',
+      logY: true,
+      height: 240,
+      series: [
+        { label: 'mash', colorVar: '--series-3', values: win(worstEffect(result), wAll), certAt: certDot(result.cert.overall) },
+        { label: 'GSR + your hands', colorVar: '--series-2', values: win(worstEffect(gsrDyn), wAll), certAt: certDot(gsrDyn.cert.overall) },
+        { label: 'GSR (fixed)', colorVar: '--series-1', values: win(worstEffect(baseline), wAll), certAt: certDot(baseline.cert.overall) },
+        ...(replayResult
+          ? [{ label: 'replayed shuffles', colorVar: '--series-5', values: win(worstEffect(replayResult), wAll), certAt: certDot(replayResult.cert.overall) }]
+          : []),
+      ],
+      refLine: 0.25,
+      innerBand: { lo: 1e-6, hi: 0.25 },
+      vLines: [
+        { x: log2Floor, label: 'floor' },
+        { x: milestones.knee, label: 'M_KNEE' },
+        { x: milestones.fair, label: 'M_FAIR' },
+      ],
+    }),
+  );
+
   for (const m of METRIC_NAMES) {
     const ref = uniformReference(deckN, m);
+    const w = chartWindow([
+      certDot(result.cert.perMetric[m]),
+      certDot(gsrDyn.cert.perMetric[m]),
+      certDot(baseline.cert.perMetric[m]),
+    ]);
     disposers.push(
       mountChart(charts, {
         title: METRIC_LABELS[m],
-        subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
-        x,
+        subtitle: `mash ${fmtCert(result.cert.perMetric[m])} · GSR+hands ${fmtCert(gsrDyn.cert.perMetric[m])} · GSR ${fmtCert(baseline.cert.perMetric[m])} · uniform ${ref.mean.toFixed(2)} ± ${ref.sd.toFixed(2)}`,
+        x: w.x,
         xLabel: 'shuffles',
         series: [
-          { label: 'mash', colorVar: '--series-3', values: Array.from(result.curves[m].mean) },
-          { label: 'GSR', colorVar: '--series-1', values: Array.from(baseline.curves[m].mean) },
+          { label: 'mash', colorVar: '--series-3', values: win(result.curves[m].mean, w), certAt: certDot(result.cert.perMetric[m]) },
+          { label: 'GSR + your hands', colorVar: '--series-2', values: win(gsrDyn.curves[m].mean, w), certAt: certDot(gsrDyn.cert.perMetric[m]) },
+          { label: 'GSR (fixed)', colorVar: '--series-1', values: win(baseline.curves[m].mean, w), certAt: certDot(baseline.cert.perMetric[m]) },
         ],
-        band: { lo: ref.mean - 2 * ref.sd, hi: ref.mean + 2 * ref.sd },
+        innerBand: { lo: ref.mean - 0.25 * ref.sd, hi: ref.mean + 0.25 * ref.sd },
         refLine: ref.mean,
         vLines: [
           { x: log2Floor, label: 'floor' },
@@ -258,6 +471,11 @@ document.getElementById('sl-mu')!.addEventListener('input', () => {
 
 function fmtCert(s: CertStatus): string {
   return s.status === 'certified' ? String(s.k) : s.status === 'not-certified' ? 'never' : 'cannot certify';
+}
+
+/** x position of a certification dot, or undefined when never certified */
+function certDot(s: CertStatus): number | undefined {
+  return s.status === 'certified' ? s.k : undefined;
 }
 
 resim();
