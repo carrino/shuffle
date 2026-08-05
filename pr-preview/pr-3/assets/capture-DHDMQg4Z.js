@@ -32,20 +32,19 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DhkOBsWw
 <div class="card">
   <details>
     <summary>Protocol (read once)</summary>
-    <p><strong>The flip method — no special sleeves needed.</strong>
-    Cut the deck the way you always do (lift the bottom packet), then
-    <strong>flip the lifted packet over</strong> so its cards face the other
-    way, and mash once <em>the way you always mash</em>. Then input the cards
-    <strong>top to bottom</strong>, dealing one at a time:
-    <strong style="color:var(--series-1)">T</strong> = an unflipped card
+    <p>Cut the deck the way you always do (lift the bottom packet),
+    <strong>flip the lifted packet over</strong> so it faces the other way,
+    and mash once the way you always mash. Then input the cards
+    <strong>top to bottom</strong>:
+    <strong style="color:var(--series-1)">T</strong> for an unflipped card
     (from the <strong>T</strong>op packet),
-    <strong style="color:var(--series-2)">U</strong> = a flipped, face-<strong>U</strong>p
-    card (from the lifted bottom packet). Un-flip afterwards — they're easy
-    to spot.</p>
-    <p>Don't aim for a special cut — the natural cut is part of what's being
-    measured (the U count <em>is</em> your actual cut size; "intended split"
-    is just what you were going for). Ugly mashes are good data: record what
-    really happened, clumps, slabs and all.</p>
+    <strong style="color:var(--series-2)">U</strong> for a flipped,
+    face-<strong>U</strong>p card (from the lifted bottom packet). Un-flip
+    them afterwards — they're easy to spot.</p>
+    <p>Cut wherever feels natural — the cut size is part of what's being
+    measured (the U count is your actual cut; "intended split" is just what
+    you were aiming for). Ugly mashes are good data: record what really
+    happened, clumps, slabs and all.</p>
   </details>
   <div class="meta">
     <div><label for="collector">Collector</label><input id="collector" autocapitalize="none" placeholder="who's shuffling"></div>
