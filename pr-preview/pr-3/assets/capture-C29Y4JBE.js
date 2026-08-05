@@ -1,4 +1,4 @@
-import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DVhmii2f.js";e(`capture.html`);var r=n(),i=document.getElementById(`app`);i.innerHTML=`
+import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-Oo6mfbT-.js";e(`capture.html`);var r=n(),i=document.getElementById(`app`);i.innerHTML=`
 <style>
   .tapper { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
   .tapper button {
@@ -7,7 +7,7 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DVhmii2f
     touch-action: manipulation; -webkit-user-select: none; user-select: none;
   }
   .tapper .r { background: var(--series-2); }
-  .tapper .b { background: var(--series-1); }
+  .tapper .t { background: var(--series-1); }
   .tapper button:active { filter: brightness(1.15); }
   .seq {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -16,7 +16,7 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DVhmii2f
     padding: 10px; min-height: 3.2em; font-size: 0.95rem;
   }
   .seq .r { color: var(--series-2); font-weight:700 }
-  .seq .b { color: var(--series-1); }
+  .seq .t { color: var(--series-1); }
   .counts { display:flex; gap:16px; font-variant-numeric: tabular-nums;
     font-size: 1.05rem; margin: 8px 0; align-items: baseline; flex-wrap: wrap; }
   .counts strong { font-size: 1.5rem; }
@@ -32,11 +32,12 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DVhmii2f
     <p><strong>The flip method — no special sleeves needed.</strong>
     Cut the deck the way you always do (lift the bottom packet), then
     <strong>flip the lifted packet over</strong> so its cards face the other
-    way, and mash once <em>the way you always mash</em>. Fan the deck and tap
-    <strong>top to bottom</strong>: flipped cards are
-    <strong style="color:var(--series-2)">R</strong>, unflipped are
-    <strong style="color:var(--series-1)">B</strong>. Un-flip afterwards —
-    they're easy to spot.</p>
+    way, and mash once <em>the way you always mash</em>. Then input the cards
+    <strong>top to bottom</strong>, dealing one at a time:
+    <strong style="color:var(--series-2)">R</strong> = a flipped card (from
+    the bottom packet), <strong style="color:var(--series-1)">T</strong> = an
+    unflipped card (from the top packet). Un-flip afterwards — they're easy
+    to spot.</p>
     <p>Don't aim for a special cut — the natural cut is part of what's being
     measured (the R count <em>is</em> your actual cut size; "intended split"
     is just what you were going for). Ugly mashes are good data: record what
@@ -61,30 +62,30 @@ import{t as e}from"./nav-Bmd7he7P.js";import{n as t,t as n}from"./store-DVhmii2f
 
 <div class="counts card">
   <span>R <strong id="countR">0</strong></span>
-  <span>B <strong id="countB">0</strong></span>
+  <span>T <strong id="countT2">0</strong></span>
   <span>total <strong id="countT">0</strong>/<span id="targetN">99</span></span>
   <span class="muted" id="liveStatus"></span>
 </div>
 
 <div class="tapper">
-  <button class="b" id="tapB">B</button>
+  <button class="t" id="tapT">T</button>
   <button class="r" id="tapR">R</button>
 </div>
 
 <div class="rowbtns">
   <button class="secondary" id="undo">← Undo</button>
   <button class="secondary" id="clear">Clear</button>
-  <button class="secondary" id="fillB" style="color:var(--series-1)">Fill rest B</button>
+  <button class="secondary" id="fillT" style="color:var(--series-1)">Fill rest T</button>
   <button class="secondary" id="fillR" style="color:var(--series-2)">Fill rest R</button>
   <button class="secondary" id="pasteToggle">Paste a string…</button>
 </div>
 <p class="muted" id="kbdHint">Keyboard: <code>z</code>/<code>x</code>, <code>←</code>/<code>→</code>
-or <code>b</code>/<code>r</code> tap a card (left = B, right = R);
+or <code>t</code>/<code>r</code> tap a card (left = T, right = R);
 <code>Backspace</code> or <code>u</code> undo; <code>Shift+Z</code>/<code>Shift+X</code>
-(or <code>Shift+B</code>/<code>Shift+R</code>) fill the remainder with one color;
+(or <code>Shift+T</code>/<code>Shift+R</code>) fill the remainder with one side;
 <code>Enter</code> saves a complete record and starts the next.</p>
 <div id="pasteArea" style="display:none">
-  <label for="pasteInput">Paste R/B string (spaces/newlines ignored, lowercase ok)</label>
+  <label for="pasteInput">Paste R/T string (spaces/newlines ignored, lowercase ok; legacy B reads as T)</label>
   <textarea id="pasteInput" rows="3" style="width:100%"></textarea>
   <div class="rowbtns"><button id="pasteApply">Use this string</button></div>
 </div>
@@ -117,7 +118,7 @@ or <code>b</code>/<code>r</code> tap a card (left = B, right = R);
     <button id="clearSaved" class="secondary" disabled>Clear saved</button>
   </div>
 </div>`;var a=[],o=e=>document.getElementById(e),s=e=>o(e),c=`mash-capture-session`,l=[];try{let e=JSON.parse(localStorage.getItem(c)??`[]`);Array.isArray(e)&&(l=e.filter(e=>typeof e==`string`))}catch{l=[]}function u(){o(`savedCount`).textContent=`${l.length} saved`,o(`savedLines`).value=l.join(`
-`);let e=l.length===0;o(`copyAll`).disabled=e,o(`downloadAll`).disabled=e,o(`clearSaved`).disabled=e}function d(){localStorage.setItem(c,JSON.stringify(l)),u()}function f(){let e=o(`jsonline`).value;!e||o(`saveNext`).disabled||(l.push(e),d(),a=[],m())}o(`decksize`).addEventListener(`change`,()=>{let e=Number(s(`decksize`).value);s(`intended`).value=String(Math.round(e*.35));let t=s(`deckname`);/^sleeved-\d+$/.test(t.value)&&(t.value=`sleeved-${e}`),m()});function p(){return{ts:new Date().toISOString(),collector:s(`collector`).value.trim(),technique:s(`technique`).value.trim(),deck:s(`deckname`).value.trim(),intendedSplit:Number(s(`intended`).value),string:a.join(``),n:Number(s(`decksize`).value)}}function m(){let e=a.filter(e=>e===`R`).length;o(`countR`).textContent=String(e),o(`countB`).textContent=String(a.length-e),o(`countT`).textContent=String(a.length),o(`targetN`).textContent=s(`decksize`).value,o(`seq`).innerHTML=a.map(e=>`<span class="${e.toLowerCase()}">${e}</span>`).join(``);let n=Number(s(`decksize`).value),i=o(`liveStatus`);i.textContent=a.length===0?``:a.length<n?`${n-a.length} to go`:a.length===n?`complete ✓`:`${a.length-n} too many!`;let c=p(),l=t(c),u=o(`validation`),d=o(`jsonline`);l.ok?r.write(l.record).then(e=>{e.mode===`manual`&&(d.value=e.line,u.innerHTML=`<span class="pill pass">VALID</span> ready to save`,o(`copy`).disabled=!1,o(`download`).disabled=!1,o(`saveNext`).disabled=!1)}):(d.value=``,o(`copy`).disabled=!0,o(`download`).disabled=!0,o(`saveNext`).disabled=!0,u.innerHTML=a.length===0?`Tap out the deck to build a record.`:`<span class="pill fail">INVALID</span> ${l.errors.join(`; `)}`)}function h(e){a.push(e),m()}function g(){a.pop(),m()}function _(e){let t=Number(s(`decksize`).value);if(!(!Number.isInteger(t)||t<2)){for(;a.length<t;)a.push(e);m()}}o(`tapR`).addEventListener(`click`,()=>h(`R`)),o(`tapB`).addEventListener(`click`,()=>h(`B`)),o(`undo`).addEventListener(`click`,g),o(`fillR`).addEventListener(`click`,()=>_(`R`)),o(`fillB`).addEventListener(`click`,()=>_(`B`)),document.addEventListener(`keydown`,e=>{let t=e.target;if(t&&(t.tagName===`INPUT`||t.tagName===`TEXTAREA`||t.tagName===`SELECT`)||e.metaKey||e.ctrlKey||e.altKey)return;let n=e.key;if(n===`b`||n===`z`||n===`ArrowLeft`)h(`B`);else if(n===`r`||n===`x`||n===`ArrowRight`)h(`R`);else if(n===`B`||n===`Z`)_(`B`);else if(n===`R`||n===`X`)_(`R`);else if(n===`Backspace`||n===`u`)g();else if(n===`Enter`)f();else return;e.preventDefault()}),o(`clear`).addEventListener(`click`,()=>{(a.length===0||confirm(`Clear the whole sequence?`))&&(a=[],m())}),o(`pasteToggle`).addEventListener(`click`,()=>{let e=o(`pasteArea`);e.style.display=e.style.display===`none`?`block`:`none`}),o(`pasteApply`).addEventListener(`click`,()=>{a=[...o(`pasteInput`).value.toUpperCase().replace(/[^RB]/g,``)],o(`pasteArea`).style.display=`none`,m()}),o(`copy`).addEventListener(`click`,()=>{navigator.clipboard.writeText(o(`jsonline`).value).then(()=>{o(`copy`).textContent=`Copied ✓`,setTimeout(()=>o(`copy`).textContent=`Copy JSON line`,1200)})}),o(`download`).addEventListener(`click`,()=>{let e=new Blob([o(`jsonline`).value+`
+`);let e=l.length===0;o(`copyAll`).disabled=e,o(`downloadAll`).disabled=e,o(`clearSaved`).disabled=e}function d(){localStorage.setItem(c,JSON.stringify(l)),u()}function f(){let e=o(`jsonline`).value;!e||o(`saveNext`).disabled||(l.push(e),d(),a=[],m())}o(`decksize`).addEventListener(`change`,()=>{let e=Number(s(`decksize`).value);s(`intended`).value=String(Math.round(e*.35));let t=s(`deckname`);/^sleeved-\d+$/.test(t.value)&&(t.value=`sleeved-${e}`),m()});function p(){return{ts:new Date().toISOString(),collector:s(`collector`).value.trim(),technique:s(`technique`).value.trim(),deck:s(`deckname`).value.trim(),intendedSplit:Number(s(`intended`).value),string:a.join(``),n:Number(s(`decksize`).value)}}function m(){let e=a.filter(e=>e===`R`).length;o(`countR`).textContent=String(e),o(`countT2`).textContent=String(a.length-e),o(`countT`).textContent=String(a.length),o(`targetN`).textContent=s(`decksize`).value,o(`seq`).innerHTML=a.map(e=>`<span class="${e.toLowerCase()}">${e}</span>`).join(``);let n=Number(s(`decksize`).value),i=o(`liveStatus`);i.textContent=a.length===0?``:a.length<n?`${n-a.length} to go`:a.length===n?`complete ✓`:`${a.length-n} too many!`;let c=p(),l=t(c),u=o(`validation`),d=o(`jsonline`);l.ok?r.write(l.record).then(e=>{e.mode===`manual`&&(d.value=e.line,u.innerHTML=`<span class="pill pass">VALID</span> ready to save`,o(`copy`).disabled=!1,o(`download`).disabled=!1,o(`saveNext`).disabled=!1)}):(d.value=``,o(`copy`).disabled=!0,o(`download`).disabled=!0,o(`saveNext`).disabled=!0,u.innerHTML=a.length===0?`Tap out the deck to build a record.`:`<span class="pill fail">INVALID</span> ${l.errors.join(`; `)}`)}function h(e){a.push(e),m()}function g(){a.pop(),m()}function _(e){let t=Number(s(`decksize`).value);if(!(!Number.isInteger(t)||t<2)){for(;a.length<t;)a.push(e);m()}}o(`tapR`).addEventListener(`click`,()=>h(`R`)),o(`tapT`).addEventListener(`click`,()=>h(`T`)),o(`undo`).addEventListener(`click`,g),o(`fillR`).addEventListener(`click`,()=>_(`R`)),o(`fillT`).addEventListener(`click`,()=>_(`T`)),document.addEventListener(`keydown`,e=>{let t=e.target;if(t&&(t.tagName===`INPUT`||t.tagName===`TEXTAREA`||t.tagName===`SELECT`)||e.metaKey||e.ctrlKey||e.altKey)return;let n=e.key;if(n===`t`||n===`z`||n===`ArrowLeft`)h(`T`);else if(n===`r`||n===`x`||n===`ArrowRight`)h(`R`);else if(n===`T`||n===`Z`)_(`T`);else if(n===`R`||n===`X`)_(`R`);else if(n===`Backspace`||n===`u`)g();else if(n===`Enter`)f();else return;e.preventDefault()}),o(`clear`).addEventListener(`click`,()=>{(a.length===0||confirm(`Clear the whole sequence?`))&&(a=[],m())}),o(`pasteToggle`).addEventListener(`click`,()=>{let e=o(`pasteArea`);e.style.display=e.style.display===`none`?`block`:`none`}),o(`pasteApply`).addEventListener(`click`,()=>{a=[...o(`pasteInput`).value.toUpperCase().replace(/B/g,`T`).replace(/[^RT]/g,``)],o(`pasteArea`).style.display=`none`,m()}),o(`copy`).addEventListener(`click`,()=>{navigator.clipboard.writeText(o(`jsonline`).value).then(()=>{o(`copy`).textContent=`Copied ✓`,setTimeout(()=>o(`copy`).textContent=`Copy JSON line`,1200)})}),o(`download`).addEventListener(`click`,()=>{let e=new Blob([o(`jsonline`).value+`
 `],{type:`application/jsonl`}),t=document.createElement(`a`);t.href=URL.createObjectURL(e),t.download=`mash-${Date.now()}.jsonl`,t.click(),URL.revokeObjectURL(t.href)}),o(`saveNext`).addEventListener(`click`,f),o(`copyAll`).addEventListener(`click`,()=>{navigator.clipboard.writeText(l.join(`
 `)+`
 `).then(()=>{o(`copyAll`).textContent=`Copied ✓`,setTimeout(()=>o(`copyAll`).textContent=`Copy all lines`,1200)})}),o(`downloadAll`).addEventListener(`click`,()=>{let e=new Blob([l.join(`
